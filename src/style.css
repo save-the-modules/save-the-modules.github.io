@@ -3131,5 +3131,221 @@ main {
     font-size: 15px;
   }
 }
-@media(max-width:650px){.header-actions .button svg{display:none}.header-actions .button{white-space:nowrap;flex-shrink:0}.header-actions{justify-content:space-between;gap:6px}.header-actions .demo-button{margin-left:0}}
-@media(max-width:370px){.equipment-body,.expanded .equipment-body{padding-left:8px;padding-right:8px}.equipment-card{padding:6px}.equipment-card .slot-row{grid-template-columns:minmax(65px,1fr) minmax(120px,1.3fr) 30px;gap:4px}.slot-row .lock{width:30px}.slot-row select{font-size:12px;padding-left:4px;padding-right:3px}.target-inputs{grid-template-columns:82px minmax(118px,1fr);gap:9px}.target-inputs select{font-size:12px;padding:0 3px}.compact-target{padding:12px}.stage-tabs>button{padding:10px}.compact-style button{font-size:11px}.compact-budget .calculate-button{font-size:11px;padding:7px}.view-heading p{max-width:200px;line-height:1.8}}
+@media (max-width: 650px) {
+  .header-actions .button svg {
+    display: none;
+  }
+  .header-actions .button {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .header-actions {
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .header-actions .demo-button {
+    margin-left: 0;
+  }
+}
+@media (max-width: 370px) {
+  .equipment-body,
+  .expanded .equipment-body {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .equipment-card {
+    padding: 6px;
+  }
+  .equipment-card .slot-row {
+    grid-template-columns: minmax(65px, 1fr) minmax(120px, 1.3fr) 30px;
+    gap: 4px;
+  }
+  .slot-row .lock {
+    width: 30px;
+  }
+  .slot-row select {
+    font-size: 12px;
+    padding-left: 4px;
+    padding-right: 3px;
+  }
+  .target-inputs {
+    grid-template-columns: 82px minmax(118px, 1fr);
+    gap: 9px;
+  }
+  .target-inputs select {
+    font-size: 12px;
+    padding: 0 3px;
+  }
+  .compact-target {
+    padding: 12px;
+  }
+  .stage-tabs > button {
+    padding: 10px;
+  }
+  .compact-style button {
+    font-size: 11px;
+  }
+  .compact-budget .calculate-button {
+    font-size: 11px;
+    padding: 7px;
+  }
+  .view-heading p {
+    max-width: 200px;
+    line-height: 1.8;
+  }
+}
+/* v2.2: live guidance and accessible tier steppers */
+.tier-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+}
+.tier-stepper output {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.tier-stepper button {
+  min-width: 38px;
+  flex-shrink: 0;
+}
+.probability-info {
+  position: relative;
+  font-size: 12px;
+  max-width: 55%;
+}
+.probability-info summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 32px;
+}
+.probability-info p {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  width: 280px;
+  max-width: 75vw;
+  padding: 14px;
+  background: #1b2638;
+  border: 1px solid #69738a;
+  border-radius: 10px;
+  color: #e4e8ef;
+  font-size: 13px;
+  line-height: 1.8;
+  box-shadow: 0 10px 35px #0008;
+}
+.goal-deficits {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #b7c0cf;
+  overflow-wrap: anywhere;
+}
+.goal-deficits li + li {
+  margin-top: 4px;
+}
+.fast-guide > h2 {
+  font-size: 24px;
+  margin: 18px 0 12px;
+}
+.fast-candidates {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+}
+.fast-candidates > li {
+  padding: 16px 0;
+  border-top: 1px solid #ffffff16;
+}
+.fast-candidates > li > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.fast-candidates p {
+  font-size: 14px;
+  line-height: 1.85;
+  color: #b7c0cf;
+  margin: 10px 0;
+}
+.fast-candidates small {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #9faabd;
+  line-height: 1.8;
+}
+.candidate-facts {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #d3b771;
+  flex-wrap: wrap;
+}
+.piece-priorities {
+  font-size: 13px;
+  line-height: 1.8;
+  border-top: 1px solid #ffffff16;
+  padding-top: 15px;
+}
+.piece-priorities summary,
+.cost-action > summary {
+  cursor: pointer;
+  min-height: 36px;
+  font-weight: 600;
+  color: #d3b771;
+}
+.piece-priorities ol {
+  padding-left: 20px;
+}
+.piece-priorities li span {
+  display: block;
+  font-size: 12px;
+  color: #a9b5c9;
+}
+.piece-priorities p {
+  font-size: 12px;
+  color: #a9b5c9;
+}
+.cost-action {
+  margin-top: 18px;
+}
+.cost-action[open] > summary {
+  margin-bottom: 18px;
+}
+@media (max-width: 650px) {
+  .tier-stepper button {
+    min-width: 32px;
+  }
+  .tier-stepper output {
+    font-size: 13px;
+  }
+  .fast-guide > h2 {
+    font-size: 20px;
+  }
+  .fast-candidates p {
+    font-size: 13px;
+  }
+  .fast-candidates small,
+  .candidate-facts {
+    font-size: 12px;
+  }
+  .probability-info {
+    font-size: 11px;
+  }
+  .goal-deficits {
+    font-size: 11px;
+  }
+}

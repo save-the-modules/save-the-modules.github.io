@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowRight, Check, Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   achievement,
+  DEFAULT_TARGET_TIER,
   deficits,
   emptyTarget,
   lineCount,
@@ -12,7 +13,6 @@ import {
   type State,
   type TargetOption,
 } from "./model";
-import { TierSelect } from "./controls";
 export type Update = (fn: (s: State) => void) => void;
 export function TargetEditor({
   state,
@@ -182,12 +182,27 @@ export function TargetEditor({
                 </label>
                 <label>
                   평균 단계
-                  <TierSelect
-                    label={`${o.short} 평균 단계`}
-                    value={r.averageTier}
-                    option={o.id}
-                    onChange={(tier) => set(o.id, r.lines, tier)}
-                  />
+                  <div
+                    className="stepper tier-stepper"
+                    role="group"
+                    aria-label={`${o.short} 평균 단계`}
+                  >
+                    <button
+                      aria-label={`${o.short} 평균 단계 줄이기`}
+                      disabled={r.averageTier <= 1}
+                      onClick={() => set(o.id, r.lines, r.averageTier - 1)}
+                    >
+                      −
+                    </button>
+                    <output aria-live="polite">{r.averageTier}단계</output>
+                    <button
+                      aria-label={`${o.short} 평균 단계 늘리기`}
+                      disabled={r.averageTier >= 15}
+                      onClick={() => set(o.id, r.lines, r.averageTier + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
                 </label>
                 <div className="goal-total">
                   <small>목표 합계 이상</small>
@@ -227,7 +242,7 @@ export function TargetEditor({
                   className="button"
                   key={o.id}
                   onClick={() => {
-                    set(o.id, 1, 1);
+                    set(o.id, 1, DEFAULT_TARGET_TIER);
                     setAdding(false);
                   }}
                 >

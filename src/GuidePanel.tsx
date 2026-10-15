@@ -1,6 +1,7 @@
-import { Check, Calculator, LockKeyhole, Sparkles } from "lucide-react";
+import { Check, Calculator, LockKeyhole, Sparkles, Info } from "lucide-react";
 import {
   achievement,
+  deficits,
   lineCount,
   progress,
   STAGES,
@@ -11,10 +12,13 @@ import {
 import { RULES } from "./data/tiers";
 import { NumberField } from "./controls";
 import type { Update } from "./TargetEditor";
+import { FastGuidePanel } from "./FastGuidePanel";
+import { isMissing, optionName, type FastGuide } from "./fastGuide";
 export function GuidePanel({
   state,
   update,
   result,
+  guide,
   stale,
   busy,
   onCalculate,
@@ -23,6 +27,7 @@ export function GuidePanel({
   state: State;
   update: Update;
   result: EngineResult | null;
+  guide: FastGuide;
   stale: boolean;
   busy: boolean;
   onCalculate: () => void;
@@ -37,7 +42,7 @@ export function GuidePanel({
       <div className="view-heading">
         <div>
           <h2>최적화 가이드</h2>
-          <p>게임 결과를 왼쪽에 반영하고 다시 계산하세요.</p>
+          <p>장비 수정 시 다음 행동 후보가 자동으로 갱신됩니다.</p>
         </div>
       </div>
       <section className="budget-panel panel compact-budget">
@@ -82,8 +87,8 @@ export function GuidePanel({
       </section>
       {stale && (
         <div className="notice stale-notice" role="status">
-          입력이 변경되었습니다. 이전 상태의 결과를 숨겼습니다. 최적화 계산을
-          다시 실행해 주세요.
+          장비·목표가 변경되어 이전 비용과 확률을 숨겼습니다. 빠른 가이드는 현재
+          상태입니다. 비용이 필요할 때 최적화 계산을 다시 실행하세요.
         </div>
       )}
       {isDemo && (
@@ -94,7 +99,16 @@ export function GuidePanel({
       )}
       <div className="compare-heading">
         <h3>목표별 투자 비교</h3>
-        <span>단순 근사 확률</span>
+        <details className="probability-info">
+          <summary aria-label="예상 달성 확률의 근사 모델 설명">
+            <Info size={16} /> 예상 달성 확률
+          </summary>
+          <p>
+            추정 평균 비용 E와 사용 가능 모듈 B에 대한 지수분포 근사
+            P=1−exp(−B/E)입니다. 실제 게임 성공 확률이나 정밀한 완료 분포가
+            아닙니다. 비용을 계산하지 못한 경로에는 확률을 표시하지 않습니다.
+          </p>
+        </details>
       </div>
       <div className="goal-comparison">
         {STAGES.map((stage) => {
@@ -145,7 +159,7 @@ export function GuidePanel({
                       ? "계산 불가"
                       : `약 ${r.expectedModules.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}개`}
                 </dd>
-                <dt>단순 근사 확률</dt>
+                <dt>예상 달성 확률</dt>
                 <dd
                   className={
                     r?.successProbability !== null &&
@@ -161,6 +175,19 @@ export function GuidePanel({
                       : `${(r.successProbability * 100).toFixed(1)}%`}
                 </dd>
               </dl>
+              <ul
+                className="goal-deficits"
+                aria-label={`${STAGE_NAMES[stage]} 부족 옵션`}
+              >
+                {deficits(state, stage).map((d) => (
+                  <li key={d.key} className={isMissing(d) ? "" : "green"}>
+                    {optionName(d.key)}{" "}
+                    {isMissing(d)
+                      ? `부족 ${d.missingCount}줄 · ${d.missingValue.toFixed(2)}%`
+                      : "충족"}
+                  </li>
+                ))}
+              </ul>
               <span className="criteria">
                 {!r
                   ? "최적화 계산을 실행하세요."
@@ -190,103 +217,107 @@ export function GuidePanel({
           있습니다.
         </p>
       )}
-      <section className="next-action panel">
-        <div className="action-topline">
-          <span>
-            <Sparkles size={17} />
-            {STAGE_NAMES[selected]} · 다음 행동
-          </span>
-          <span className="small-badge">
-            {result ? "규칙 기반 근사" : "계산 전"}
-          </span>
-        </div>
-        {!result ? (
-          <div className="engine-empty">
-            <h3>최적화 계산으로 다음 작업을 확인하세요.</h3>
-            <p>장비·목표·모듈 예산이 준비되면 위 버튼을 눌러 주세요.</p>
+      <FastGuidePanel guide={guide} state={state} isDemo={isDemo} />
+      {result && (
+        <details className="next-action panel cost-action">
+          <summary>비용 계산 경로의 첫 행동 · 현재 장비 기준</summary>
+          <div className="action-topline">
+            <span>
+              <Sparkles size={17} />
+              {STAGE_NAMES[selected]} · 다음 행동
+            </span>
+            <span className="small-badge">
+              {result ? "규칙 기반 근사" : "계산 전"}
+            </span>
           </div>
-        ) : a ? (
-          <>
-            <div className="next-action-heading">
-              <h2>
-                {a.action === "사용 중단"
-                  ? "목표 달성 · 모듈 사용 중단"
-                  : `${a.part} · ${a.action}`}
-              </h2>
+          {!result ? (
+            <div className="engine-empty">
+              <h3>최적화 계산으로 다음 작업을 확인하세요.</h3>
+              <p>장비·목표·모듈 예산이 준비되면 위 버튼을 눌러 주세요.</p>
             </div>
-            <p>{a.reason}</p>
-            {a.action !== "사용 중단" && (
-              <>
-                <div className="action-details">
-                  <div>
-                    <small>
-                      <LockKeyhole size={13} />
-                      잠금 대상
-                    </small>
-                    <b>
-                      {a.lockSlots.length
-                        ? a.lockSlots
-                            .map(
-                              (j) =>
-                                `${j + 1}번${a.newLockSlots.includes(j) ? " (새 잠금)" : ""}`,
-                            )
-                            .join(", ")
-                        : "추가 잠금 없음"}
-                    </b>
-                  </div>
-                  <div>
-                    <small>첫 실행 모듈</small>
-                    <b>
-                      {a.firstExecutionModules}개{" "}
+          ) : a ? (
+            <>
+              <div className="next-action-heading">
+                <h2>
+                  {a.action === "사용 중단"
+                    ? "목표 달성 · 모듈 사용 중단"
+                    : `${a.part} · ${a.action}`}
+                </h2>
+              </div>
+              <p>{a.reason}</p>
+              {a.action !== "사용 중단" && (
+                <>
+                  <div className="action-details">
+                    <div>
                       <small>
-                        잠금 {a.lockCost} + 리롤 {a.modules}
+                        <LockKeyhole size={13} />
+                        잠금 대상
                       </small>
-                    </b>
+                      <b>
+                        {a.lockSlots.length
+                          ? a.lockSlots
+                              .map(
+                                (j) =>
+                                  `${j + 1}번${a.newLockSlots.includes(j) ? " (새 잠금)" : ""}`,
+                              )
+                              .join(", ")
+                          : "추가 잠금 없음"}
+                      </b>
+                    </div>
+                    <div>
+                      <small>첫 실행 모듈</small>
+                      <b>
+                        {a.firstExecutionModules}개{" "}
+                        <small>
+                          잠금 {a.lockCost} + 리롤 {a.modules}
+                        </small>
+                      </b>
+                    </div>
+                    <div>
+                      <small>이후 반복</small>
+                      <b>회당 {a.modules}개</b>
+                    </div>
                   </div>
-                  <div>
-                    <small>이후 반복</small>
-                    <b>회당 {a.modules}개</b>
-                  </div>
-                </div>
-                {a.strategy.lockedExpected !== null && (
-                  <p className="strategy-comparison">
-                    잔여 비용 비교 · 기존 잠금만{" "}
-                    {a.strategy.unlockedExpected === null
-                      ? "계산 불가"
-                      : `${a.strategy.unlockedExpected.toFixed(1)}개`}{" "}
-                    / 추가 잠금 포함 {a.strategy.lockedExpected.toFixed(1)}개
+                  {a.strategy.lockedExpected !== null && (
+                    <p className="strategy-comparison">
+                      잔여 비용 비교 · 기존 잠금만{" "}
+                      {a.strategy.unlockedExpected === null
+                        ? "계산 불가"
+                        : `${a.strategy.unlockedExpected.toFixed(1)}개`}{" "}
+                      / 추가 잠금 포함 {a.strategy.lockedExpected.toFixed(1)}개
+                    </p>
+                  )}
+                  {state.resources.modules.budget < a.firstExecutionModules && (
+                    <p className="notice error">
+                      첫 실행에 {a.firstExecutionModules}개가 필요합니다. 현재
+                      사용 가능 모듈이 부족합니다.
+                    </p>
+                  )}
+                  <p className="compact-note">
+                    잠금 선택만으로 모듈을 차감하지 않습니다. 새 잠금 비용은
+                    게임에서 첫 리롤 실행 시 한 번만 반영합니다.
                   </p>
-                )}
-                {state.resources.modules.budget < a.firstExecutionModules && (
-                  <p className="notice error">
-                    첫 실행에 {a.firstExecutionModules}개가 필요합니다. 현재
-                    사용 가능 모듈이 부족합니다.
-                  </p>
-                )}
-                <p className="compact-note">
-                  잠금 선택만으로 모듈을 차감하지 않습니다. 새 잠금 비용은
-                  게임에서 첫 리롤 실행 시 한 번만 반영합니다.
-                </p>
-              </>
-            )}
-          </>
-        ) : (
-          <div className="engine-empty">
-            <h3>추천 가능한 경로를 계산할 수 없습니다.</h3>
-          </div>
-        )}
-        {g && (
-          <p
-            className={`result-reason ${g.expectedModules === null ? "warning-text" : ""}`}
-          >
-            {g.reason}
+                </>
+              )}
+            </>
+          ) : (
+            <div className="engine-empty">
+              <h3>추천 가능한 경로를 계산할 수 없습니다.</h3>
+            </div>
+          )}
+          {g && (
+            <p
+              className={`result-reason ${g.expectedModules === null ? "warning-text" : ""}`}
+            >
+              {g.reason}
+            </p>
+          )}
+          <p className="approx-label">
+            {isDemo ? "데모 결과 · " : ""}단순 근사 결과입니다. 최적해·실제 성공
+            확률을 보장하지 않습니다.
           </p>
-        )}
-        <p className="approx-label">
-          {isDemo ? "데모 결과 · " : ""}단순 근사 결과입니다. 최적해·실제 성공
-          확률을 보장하지 않습니다.
-        </p>
-      </section>
+        </details>
+      )}
       {result && (
         <details className="panel model-details">
           <summary>계산 범위와 제외한 규칙</summary>

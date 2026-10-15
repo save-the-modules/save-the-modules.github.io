@@ -10,6 +10,9 @@ import {
 } from "./data/tiers";
 import {
   achievement,
+  chooseEquipmentOption,
+  costSignature,
+  DEFAULT_TARGET_TIER,
   deficits,
   demoState,
   emptySlot,
@@ -37,6 +40,8 @@ import {
   simpleProbability,
   tierDistribution,
 } from "./engine";
+import { getFastGuide, fastGuideSignature, evaluatePieces } from "./fastGuide";
+import { CostCache, recordBaselines } from "./resultCache";
 const fresh = () => {
   const s = initialState();
   s.targets.minimum = emptyTarget();
@@ -76,12 +81,12 @@ test("probabilities sum to one and use user-corrected critical weights", () => {
   );
   assert.deepEqual(SLOT_PROBABILITIES, [1, 0.5, 0.3]);
   assert.equal(OPTION_WEIGHTS.crit, 0.12);
-  assert.equal(OPTION_WEIGHTS.critDamage, 0.10);
+  assert.equal(OPTION_WEIGHTS.critDamage, 0.1);
 });
 test("fresh default is only four code lines; other goals are independent", () => {
   const s = initialState();
   assert.equal(s.targets.minimum.code.lines, 4);
-  assert.equal(s.targets.minimum.code.averageTier, 1);
+  assert.equal(s.targets.minimum.code.averageTier, 8);
   assert.equal(s.targets.balanced.code.lines, 0);
   s.targets.minimum.code.lines = 2;
   assert.equal(s.targets.ultimate.code.lines, 0);
@@ -182,7 +187,7 @@ test("H: equipment, goal, budget and style changes invalidate old results; navig
   assert.ok(resultIsCurrent(r, s));
   for (const mutate of [
     (x: typeof s) => (x.equipment[0].slots[0] = slot("code", 8)),
-    (x: typeof s) => (x.targets.minimum.code = makeRequirement("code", 4, 8)),
+    (x: typeof s) => (x.targets.minimum.code = makeRequirement("code", 4, 9)),
     (x: typeof s) => x.resources.modules.budget++,
     (x: typeof s) => (x.style = "challenge"),
   ]) {
@@ -281,6 +286,7 @@ test("reset can lock needed third-slot high option and accounts for first execut
 });
 test("completed goal recommends stopping modules", () => {
   const s = initialState();
+  s.targets.minimum.code = makeRequirement("code", 4, 1);
   s.equipment.forEach((e) => (e.slots[0] = slot("code", 1)));
   const r = calculateGoal(s, "minimum");
   assert.equal(r.expectedModules, 0);
@@ -322,7 +328,7 @@ test("progress baselines are per-goal, do not use consumed budget and reset on c
   close(progress(s, "minimum", r)!, 0.4);
   s.resources.modules.budget = 1;
   close(progress(s, "minimum", r)!, 0.4);
-  s.targets.minimum.code = makeRequirement("code", 4, 8);
+  s.targets.minimum.code = makeRequirement("code", 4, 9);
   assert.equal(progress(s, "minimum", r), null);
   assert.equal(progress(s, "balanced", r), null);
 });
@@ -341,4 +347,234 @@ test("calculation is deterministic and leaves input/budget/lock flags untouched"
     before = JSON.stringify(s);
   assert.deepEqual(calculate(s), calculate(s));
   assert.equal(JSON.stringify(s), before);
+});
+
+test("v2.2: first equipment option uses tier 11; existing tiers survive option changes", () => {
+  const first = chooseEquipmentOption(emptySlot(), "code");
+  assert.equal(first.tier, 11);
+  assert.equal(first.value, 23.56);
+  assert.equal(chooseEquipmentOption(slot("attack", 6), "code").tier, 6);
+  const cleared = chooseEquipmentOption(first, "none");
+  assert.deepEqual(cleared, emptySlot());
+  assert.equal(chooseEquipmentOption(cleared, "attack").tier, 11);
+});
+
+test("v2.2: new targets use tier 8 and update totals at boundaries", () => {
+  assert.equal(DEFAULT_TARGET_TIER, 8);
+  assert.equal(initialState().targets.minimum.code.total, 77.4);
+  assert.equal(makeRequirement("attack", 1, DEFAULT_TARGET_TIER).total, 9.7);
+  assert.equal(makeRequirement("code", 4, 9).total, 83);
+  assert.equal(makeRequirement("code", 4, 1).total, 38.16);
+  assert.equal(makeRequirement("code", 4, 15).total, 116.64);
+});
+
+test("v2.2: v2.1 persisted goals, equipment, locks and manual goal selection are preserved", () => {
+  const saved = initialState();
+  saved.targets.minimum.code = makeRequirement("code", 4, 1);
+  saved.targets.balanced.attack = makeRequirement("attack", 3, 6);
+  saved.ui.selectedGoal = "ultimate";
+  saved.equipment[0].slots[2] = slot("code", 7, true);
+  const loaded = parseState(JSON.stringify(saved));
+  assert.deepEqual(loaded.targets, saved.targets);
+  assert.deepEqual(loaded.equipment, saved.equipment);
+  assert.equal(loaded.ui.selectedGoal, "ultimate");
+});
+
+test("v2.2: a compound goal keeps live candidates even when whole-goal cost is unavailable", () => {
+  const s = initialState();
+  s.targets.minimum.attack = makeRequirement("attack", 4, 8);
+  s.equipment.forEach((e) => (e.slots[2] = slot("code", 15, true)));
+  assert.equal(calculateGoal(s, "minimum").expectedModules, null);
+  const guide = getFastGuide(s);
+  assert.equal(guide.status, "unmet");
+  assert.equal(guide.rows.find((r) => r.key === "attack")!.missingCount, 4);
+  assert.ok(guide.candidates.length >= 4);
+  assert.ok(
+    guide.candidates.every((c) => c.conditional && c.lockSlots.includes(2)),
+  );
+});
+
+test("v2.2: irrelevant hit/defense never receive a new lock in fast guide", () => {
+  const s = initialState();
+  s.equipment[0].slots = [slot("hit", 15), slot("defense", 15), emptySlot()];
+  assert.ok(getFastGuide(s).candidates.length);
+  for (const c of getFastGuide(s).candidates) {
+    for (const j of c.newLockSlots)
+      assert.equal(s.equipment[c.partIndex].slots[j].option, "code");
+  }
+});
+
+test("v2.2: a requested hit option is a contributor and can be protected", () => {
+  const s = initialState();
+  s.targets.minimum.hit = makeRequirement("hit", 1, 8);
+  s.equipment[0].slots[2] = slot("hit", 15);
+  const head = getFastGuide(s).candidates.find(
+    (c) => c.partIndex === 0 && c.action === "효과 변경",
+  );
+  assert.ok(head?.lockSlots.includes(2));
+});
+
+test("v2.2: protect a third-slot core option and work a less valuable piece first", () => {
+  const s = initialState();
+  s.equipment[0].slots[2] = slot("code", 15);
+  const guide = getFastGuide(s);
+  assert.notEqual(guide.candidates[0].partIndex, 0);
+  assert.ok(evaluatePieces(s, "minimum")[0].protectedSlots.includes(2));
+});
+
+test("v2.2: joint removal of interchangeable critical lines cannot discard both", () => {
+  const s = initialState();
+  s.targets.minimum.critical = makeRequirement("critical", 1, 8);
+  s.equipment[0].slots = [slot("crit", 8), emptySlot(), slot("critDamage", 8)];
+  [1, 2, 3].forEach((p) => (s.equipment[p].slots[0] = slot("code", 8)));
+  const guide = getFastGuide(s);
+  const head = guide.candidates.find(
+    (c) => c.partIndex === 0 && c.target === "code",
+  )!;
+  assert.ok(head);
+  assert.equal(head.newLockSlots.length, 1);
+  assert.deepEqual(head.newLockSlots, [2]);
+});
+
+test("v2.2: full-equipment allocation does not force attack on any fixed three parts", () => {
+  const s = fresh();
+  s.targets.minimum.attack = makeRequirement("attack", 3, 8);
+  const empty = getFastGuide(s);
+  assert.deepEqual(
+    new Set(empty.candidates.map((c) => c.partIndex)),
+    new Set([0, 1, 2, 3]),
+  );
+  [1, 2, 3].forEach((p) => (s.equipment[p].slots[0] = slot("attack", 8)));
+  assert.equal(getFastGuide(s).status, "met");
+  assert.equal(getFastGuide(s).candidates.length, 0);
+});
+
+test("v2.2: no effect candidate may require discarding three protected options", () => {
+  const s = initialState();
+  for (const key of ["attack", "ammo", "chargeSpeed"] as const)
+    s.targets.minimum[key] = makeRequirement(key, 1, 8);
+  s.equipment[0].slots = [
+    slot("attack", 8),
+    slot("ammo", 8),
+    slot("chargeSpeed", 8),
+  ];
+  assert.ok(
+    !getFastGuide(s).candidates.some(
+      (c) => c.partIndex === 0 && c.action === "효과 변경",
+    ),
+  );
+});
+
+test("v2.2: equipment edits change live guide without running the cost engine", () => {
+  const s = initialState(),
+    before = fastGuideSignature(s);
+  assert.equal(getFastGuide(s).rows[0].missingCount, 4);
+  s.equipment[0].slots[0] = slot("code", 11);
+  assert.notEqual(fastGuideSignature(s), before);
+  assert.equal(getFastGuide(s).rows[0].missingCount, 3);
+  assert.ok(
+    !getFastGuide(s).candidates.some(
+      (c) => c.partIndex === 0 && c.target === "code",
+    ),
+  );
+  s.equipment.forEach((e) => (e.slots[0] = slot("code", 11)));
+  assert.equal(getFastGuide(s).status, "met");
+});
+
+test("v2.2: recording a recommendation never overwrites manual goal selection", () => {
+  const s = demoState();
+  s.ui.selectedGoal = "ultimate";
+  const result = calculate(s);
+  assert.equal(result.recommendedStage, "minimum");
+  recordBaselines(s, result);
+  assert.equal(s.ui.selectedGoal, "ultimate");
+  assert.equal(getFastGuide(s).stage, "ultimate");
+});
+
+test("v2.2: cost cache reuses geometry for budget/style and recomputes probability and recommendation", () => {
+  const s = demoState(),
+    cache = new CostCache();
+  const geometry = costSignature(s),
+    result = calculate(s);
+  cache.put(s, false, result);
+  s.style = "challenge";
+  assert.equal(costSignature(s), geometry);
+  assert.equal(cache.get(s, false)!.recommendedStage, "balanced");
+  s.resources.modules.budget = 0;
+  const updated = cache.get(s, false)!;
+  assert.equal(updated.goals.minimum.successProbability, 0);
+  assert.equal(updated.recommendedStage, null);
+  assert.ok(resultIsCurrent(updated, s));
+});
+
+test("v2.2: changed equipment/goals hide cached costs; exact undo can reuse them", () => {
+  const s = initialState(),
+    cache = new CostCache();
+  cache.put(s, false, calculate(s));
+  const original = structuredClone(s);
+  s.equipment[0].slots[0] = slot("code", 11);
+  assert.equal(cache.get(s, false), null);
+  assert.ok(cache.get(original, false));
+  original.targets.minimum.code = makeRequirement("code", 4, 9);
+  assert.equal(cache.get(original, false), null);
+});
+
+test("v2.2: cache isolates demo results and rejects mismatched input responses", () => {
+  const s = demoState(),
+    cache = new CostCache();
+  const result = calculate(s, "demo");
+  cache.put(s, true, result);
+  assert.ok(cache.get(s, true));
+  assert.equal(cache.get(s, false), null);
+  const changed = structuredClone(s);
+  changed.equipment[0].slots[0] = slot("code", 11);
+  cache.put(changed, true, result);
+  assert.equal(cache.get(changed, true), null);
+});
+
+test("v2.2: live guide evaluates selected goal and demo edits cannot change user guide", () => {
+  const user = initialState(),
+    demo = demoState(),
+    before = getFastGuide(user);
+  demo.ui.selectedGoal = "balanced";
+  demo.equipment[0].slots[0] = slot("code", 15);
+  assert.equal(getFastGuide(demo).stage, "balanced");
+  assert.deepEqual(getFastGuide(user), before);
+});
+
+test("v2.2: invalid data and empty goals cannot produce action candidates", () => {
+  const s = initialState();
+  s.ui.selectedGoal = "balanced";
+  assert.equal(getFastGuide(s).status, "empty");
+  assert.deepEqual(getFastGuide(s).candidates, []);
+  s.ui.selectedGoal = "minimum";
+  s.equipment[0].slots = [slot("code", 8), slot("code", 9), emptySlot()];
+  assert.equal(getFastGuide(s).status, "invalid");
+  assert.deepEqual(getFastGuide(s).candidates, []);
+});
+
+test("v2.2: previous model progress baselines are hidden and replaced without changing targets", () => {
+  const s = initialState();
+  const targetBefore = structuredClone(s.targets);
+  s.baselines.minimum = { signature: "stm-v2.1-model-signature", cost: 50 };
+  const loaded = parseState(JSON.stringify(s));
+  const result = calculate(loaded);
+  assert.equal(progress(loaded, "minimum", result.goals.minimum), null);
+  recordBaselines(loaded, result);
+  assert.equal(progress(loaded, "minimum", result.goals.minimum), 0);
+  assert.deepEqual(loaded.targets, targetBefore);
+});
+
+test("v2.2: critical allocation bottlenecks can suggest value resets without duplicate type acquisition", () => {
+  const s = fresh();
+  s.targets.minimum.crit = makeRequirement("crit", 2, 15);
+  s.targets.minimum.critDamage = makeRequirement("critDamage", 2, 15);
+  s.targets.minimum.critical = makeRequirement("critical", 4, 15);
+  s.equipment.forEach(
+    (e) => (e.slots = [slot("crit", 8), slot("critDamage", 8), emptySlot()]),
+  );
+  const guide = getFastGuide(s);
+  assert.ok(guide.candidates.some((c) => c.action === "수치 재설정"));
+  assert.ok(!guide.candidates.some((c) => c.action === "효과 변경"));
+  assert.ok(guide.candidates.every((c) => c.conditional));
 });

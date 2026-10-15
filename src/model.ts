@@ -1,4 +1,7 @@
 import { DATA_REVISION, tierValue, TIER_COUNT } from "./data/tiers";
+export const MODEL_REVISION = "stm-v2.2-conservative-local-events";
+export const DEFAULT_EQUIPMENT_TIER = 11;
+export const DEFAULT_TARGET_TIER = 8;
 export const OPTIONS = [
   { id: "code", name: "우월 코드 대미지", short: "우월 코드" },
   { id: "attack", name: "공격력", short: "공격력" },
@@ -98,6 +101,14 @@ export const emptySlot = (): Slot => ({
   value: 0,
   locked: false,
 });
+export function chooseEquipmentOption(
+  slot: Slot,
+  option: Slot["option"],
+): Slot {
+  if (option === "none") return emptySlot();
+  const tier = slot.tier || DEFAULT_EQUIPMENT_TIER;
+  return { ...slot, option, tier, value: tierValue(option, tier)! };
+}
 export const emptyTarget = (): Target =>
   targetOptions.reduce((result, o) => {
     result[o.id] = {
@@ -119,7 +130,10 @@ export function initialState(): State {
       slots: Array.from({ length: 3 }, emptySlot),
     })),
     targets: {
-      minimum: { ...emptyTarget(), code: makeRequirement("code", 4, 1) },
+      minimum: {
+        ...emptyTarget(),
+        code: makeRequirement("code", 4, DEFAULT_TARGET_TIER),
+      },
       balanced: emptyTarget(),
       ultimate: emptyTarget(),
     },
@@ -233,23 +247,25 @@ export function deficits(s: State, stage: Stage): Deficit[] {
   );
   const keys: TargetOption[] = ["crit", "critDamage", "critical"];
   let best = keys.map((k) => make(k, [])),
-    bestScore = -Infinity;
+    bestScore: number[] | null = null;
   const groups: (typeof all)[] = [[], [], []];
   const assign = (i: number) => {
     if (i === criticals.length) {
       const rows = keys.map((k, j) => make(k, groups[j]));
-      // Equal priority for count and value satisfaction; never add raw counts to percentages.
-      const score = rows.reduce(
-        (a, r) =>
-          a +
-          (r.targetCount
-            ? Math.min(1, r.currentCount / r.targetCount) +
-              Math.min(1, r.currentValue / (r.targetValue || 1)) +
-              (r.missingCount === 0 && r.missingValue < 1e-7 ? 4 : 0)
-            : 0),
-        0,
-      );
-      if (score > bestScore) {
+      // Lexicographic assignment: completed goals, missing lines, then value shortfall.
+      // Counts and percentages are never combined with an invented weighting constant.
+      const active = rows.filter((r) => r.targetCount > 0);
+      const score = [
+        active.filter((r) => r.missingCount === 0 && r.missingValue < 1e-7)
+          .length,
+        -active.reduce((n, r) => n + r.missingCount, 0),
+        -active.reduce((n, r) => n + r.missingValue / (r.targetValue || 1), 0),
+      ];
+      const difference =
+        bestScore === null
+          ? 1
+          : (score.map((x, i) => x - bestScore![i]).find((x) => x !== 0) ?? 0);
+      if (difference > 0) {
         bestScore = score;
         best = rows;
       }
@@ -301,12 +317,22 @@ export function achievement(
 export function targetSignature(t: Target) {
   return JSON.stringify([
     DATA_REVISION,
+    MODEL_REVISION,
     targetOptions.map((o) => [
       o.id,
       t[o.id].lines,
       t[o.id].averageTier,
       t[o.id].total,
     ]),
+  ]);
+}
+// Heavy costs depend on equipment/goals/model, not budget, style or navigation.
+export function costSignature(s: State) {
+  return JSON.stringify([
+    MODEL_REVISION,
+    DATA_REVISION,
+    s.equipment,
+    STAGES.map((k) => targetSignature(s.targets[k])),
   ]);
 }
 export function inputSignature(s: State) {

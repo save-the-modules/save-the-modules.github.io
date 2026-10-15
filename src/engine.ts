@@ -26,9 +26,10 @@ import {
   TIER_PROBABILITIES,
   tierValue,
 } from "./data/tiers";
+import { comparePriority, evaluatePieces } from "./fastGuide";
 
 export const ENGINE_ASSUMPTIONS = [
-  "단순 근사 확률: P = 1 − exp(−사용 가능 모듈 / 추정 기대 비용). 실제 완료 분포가 아닙니다.",
+  "예상 달성 확률은 지수모델 근사: P = 1 − exp(−사용 가능 모듈 / 추정 기대 비용). 실제 완료 분포가 아닙니다.",
   "각 단계는 조건을 만족할 때만 결과를 채용하는 반복 시도로 보고 E = c / p를 합산합니다. 여러 옵션의 동시 획득 이득은 선반영하지 않습니다.",
   "효과 변경은 무잠금 첫 슬롯의 단일 옵션 획득 경로만 계산합니다. 다른 유효 옵션이 사라지면 후보에서 제외합니다. 2·3슬롯 동시 추첨 및 잠금 후 종류별 조건부 확률은 미확인으로 계산하지 않습니다.",
   "수치 재설정은 기존 단계 제외 후 확률을 재정규화합니다. 다른 유효 옵션의 현재 수치를 보존하는 조건까지 곱하는 슬롯별 근사입니다.",
@@ -79,30 +80,17 @@ const relevant = (slot: Slot, s: State, stage: Stage) =>
     (["crit", "critDamage"].includes(slot.option) &&
       s.targets[stage].critical.lines > 0));
 export function preservationValues(s: State, stage: Stage): number[][] {
-  const base = deficits(s, stage);
-  return s.equipment.map((e, p) =>
-    e.slots.map((slot, j) => {
-      if (!relevant(slot, s, stage)) return 0;
-      const next = structuredClone(s);
-      next.equipment[p].slots[j] = emptySlot();
-      const after = deficits(next, stage);
-      const contribution = base.reduce((a, r) => {
-        const n = after.find((x) => x.key === r.key)!;
-        return (
-          a +
-          Math.max(0, n.missingCount - r.missingCount) / (r.targetCount || 1) +
-          Math.max(0, n.missingValue - r.missingValue) / (r.targetValue || 1)
-        );
-      }, 0);
-      return contribution * (1 + slot.tier / 15) * (1 / SLOT_PROBABILITIES[j]);
-    }),
+  return evaluatePieces(s, stage).map((p) =>
+    s.equipment[p.index].slots.map((_, j) =>
+      p.protectedSlots.includes(j) ? 1 : 0,
+    ),
   );
 }
 type Candidate = {
   next: State;
   action: NextAction;
   cost: number;
-  preservation: number;
+  protection: number[];
 };
 const name = (key: TargetOption) =>
   key === "critical" ? "크크" : OPTIONS.find((o) => o.id === key)!.short;
@@ -145,7 +133,12 @@ function improves(
 }
 function candidates(s: State, stage: Stage): Candidate[] {
   const rows = deficits(s, stage),
-    values = preservationValues(s, stage),
+    pieces = evaluatePieces(s, stage, rows),
+    values = pieces.map((p) =>
+      s.equipment[p.index].slots.map((_, j) =>
+        p.protectedSlots.includes(j) ? 1 : 0,
+      ),
+    ),
     out: Candidate[] = [];
   for (const row of rows.filter(
     (r) => r.missingCount || r.missingValue > 1e-7,
@@ -183,7 +176,7 @@ function candidates(s: State, stage: Stage): Candidate[] {
                 out.push({
                   next,
                   cost: 1 / p,
-                  preservation: values[part].reduce((a, v) => a + v, 0),
+                  protection: pieces[part].protection,
                   action: {
                     part: PARTS[part],
                     action: "효과 변경",
@@ -266,7 +259,7 @@ function candidates(s: State, stage: Stage): Candidate[] {
               compare.push({
                 next,
                 cost,
-                preservation: 0,
+                protection: [0, 0, 0, 0],
                 action: {
                   part: PARTS[part],
                   action: "수치 재설정",
@@ -302,7 +295,7 @@ function candidates(s: State, stage: Stage): Candidate[] {
   }
   // Third-slot high-tier contribution raises preservation priority, not a mandatory lock.
   return out.sort(
-    (a, b) => a.cost + a.preservation * 20 - (b.cost + b.preservation * 20),
+    (a, b) => comparePriority(a.protection, b.protection) || a.cost - b.cost,
   );
 }
 export function calculateGoal(input: State, stage: Stage): GoalResult {
@@ -354,7 +347,8 @@ export function calculateGoal(input: State, stage: Stage): GoalResult {
         successProbability: null,
         nextAction: first,
         stable: false,
-        reason: "계산 불가: 유효 옵션을 보존하려면 잠금 후 효과 변경 또는 복수 옵션의 조건부 추첨 확률이 필요합니다. 해당 분포는 검증되지 않아 이 경로를 제외했습니다. 모든 옵션 잠금 상태와 목표 배분도 확인해 주세요.",
+        reason:
+          "계산 불가: 유효 옵션을 보존하려면 잠금 후 효과 변경 또는 복수 옵션의 조건부 추첨 확률이 필요합니다. 해당 분포는 검증되지 않아 이 경로를 제외했습니다. 모든 옵션 잠금 상태와 목표 배분도 확인해 주세요.",
       };
     first ??= candidate.action;
     cost += candidate.cost;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { LockKeyhole, UnlockKeyhole } from "lucide-react";
-import { OPTIONS, emptySlot, type Slot } from "./model";
+import { chooseEquipmentOption, OPTIONS, type Slot } from "./model";
 import { tierValue } from "./data/tiers";
 export function NumberField({
   value,
@@ -115,16 +115,7 @@ export function SlotEditor({
         value={slot.option}
         onChange={(e) => {
           const option = e.target.value as Slot["option"];
-          onChange(
-            option === "none"
-              ? emptySlot()
-              : {
-                  ...slot,
-                  option,
-                  tier: slot.tier || 1,
-                  value: tierValue(option, slot.tier || 1)!,
-                },
-          );
+          onChange(chooseEquipmentOption(slot, option));
         }}
       >
         <option value="none">옵션 없음</option>
