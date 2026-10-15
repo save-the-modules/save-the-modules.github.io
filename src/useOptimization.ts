@@ -35,9 +35,9 @@ export function useOptimization(
     worker.current?.terminate();
     worker.current = null;
     setBusy(false);
-    setCalculated((previous) => ({ ...previous, [dataset]: true }));
     const cached = cache.current.get(state, isDemo);
     if (cached) {
+      setCalculated((previous) => ({ ...previous, [dataset]: true }));
       update((s) => recordBaselines(s, cached));
       return;
     }
@@ -65,6 +65,7 @@ export function useOptimization(
         }
         const r = e.data.result as EngineResult;
         cache.current.put(state, isDemo, r);
+        setCalculated((previous) => ({ ...previous, [dataset]: true }));
         setRevision((n) => n + 1);
         update((s) => {
           if (costSignature(s) === geometry) recordBaselines(s, r);
