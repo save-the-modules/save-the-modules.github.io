@@ -1,4 +1,4 @@
-import { tierValue, TIER_COUNT } from "./data/tiers";
+import { DATA_REVISION, tierValue, TIER_COUNT } from "./data/tiers";
 export const OPTIONS = [
   { id: "code", name: "우월 코드 대미지", short: "우월 코드" },
   { id: "attack", name: "공격력", short: "공격력" },
@@ -39,7 +39,9 @@ export interface Requirement {
 }
 export type Target = Record<TargetOption, Requirement>;
 export interface State {
-  schemaVersion: 2;
+  schemaVersion: 3;
+  migrationNotes: string[];
+  baselines: Partial<Record<Stage, { signature: string; cost: number }>>;
   equipment: Equipment[];
   targets: Record<Stage, Target>;
   resources: {
@@ -61,21 +63,30 @@ export interface EngineInput {
   style: State["style"];
   criticalRule: { damagePerChance: 2.88; exclusiveAssignment: true };
 }
+export interface NextAction {
+  part: (typeof PARTS)[number];
+  action: "효과 변경" | "수치 재설정" | "사용 중단";
+  lockSlots: number[];
+  newLockSlots: number[];
+  reason: string;
+  modules: number;
+  lockCost: number;
+  firstExecutionModules: number;
+  strategy: { unlockedExpected: number | null; lockedExpected: number | null };
+}
+export interface GoalResult {
+  expectedModules: number | null;
+  successProbability: number | null;
+  reason: string;
+  nextAction: NextAction | null;
+  stable: boolean;
+}
 export interface EngineResult {
   source: "engine" | "demo";
-  goals: Record<
-    Stage,
-    { expectedModules: number | null; successProbability: number | null }
-  >;
+  inputSignature: string;
+  goals: Record<Stage, GoalResult>;
   recommendedStage: Stage | null;
-  nextAction: {
-    part: (typeof PARTS)[number];
-    action: "효과 변경" | "수치 재설정";
-    lockSlots: number[];
-    reason: string;
-    modules: number;
-    lockKeys: number;
-  } | null;
+  assumptions: string[];
 }
 export const targetOptions = [
   ...OPTIONS,
@@ -100,13 +111,15 @@ export const emptyTarget = (): Target =>
   }, {} as Target);
 export function initialState(): State {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    migrationNotes: [],
+    baselines: {},
     equipment: PARTS.map((part) => ({
       part,
       slots: Array.from({ length: 3 }, emptySlot),
     })),
     targets: {
-      minimum: emptyTarget(),
+      minimum: { ...emptyTarget(), code: makeRequirement("code", 4, 1) },
       balanced: emptyTarget(),
       ultimate: emptyTarget(),
     },
@@ -130,7 +143,7 @@ export function toEngineInput(s: State): EngineInput {
   };
 }
 export function lineCount(t: Target) {
-  return Object.values(t).reduce((a, r) => a + r.lines, 0);
+  return targetOptions.reduce((a, o) => a + t[o.id].lines, 0);
 }
 export function totals(s: State) {
   return OPTIONS.map((o) => {
@@ -144,24 +157,124 @@ export function totals(s: State) {
     };
   });
 }
-function matches(slots: Slot[], r: Requirement, critical = false): boolean {
-  if (!r.lines) return true;
-  if (slots.length !== r.lines) return false;
-  const tiers = slots.map((s) => s.tier).sort((a, b) => b - a);
-  const floors = Array.from(
-    { length: r.lines },
-    (_, i) => r.floors[i] ?? 0,
-  ).sort((a, b) => b - a);
-  return (
-    tiers.every((t, i) => t >= floors[i]) &&
-    slots.reduce(
-      (a, s) =>
-        a + (critical && s.option === "critDamage" ? s.value / 2.88 : s.value),
+export function makeRequirement(
+  key: TargetOption,
+  lines: number,
+  tier: number,
+): Requirement {
+  return {
+    lines,
+    averageTier: lines ? tier : 0,
+    total: Math.round((tierValue(key, tier) ?? 0) * lines * 100) / 100,
+    floors: [],
+    manual: false,
+  };
+}
+export function equipmentIssues(s: State): string[] {
+  return s.equipment.flatMap((e) => {
+    const options = e.slots
+      .filter((x) => x.option !== "none")
+      .map((x) => x.option);
+    return [
+      ...(new Set(options).size !== options.length
+        ? [`${e.part}: 동일 옵션 중복을 수정해 주세요.`]
+        : []),
+      ...e.slots.flatMap((x, i) =>
+        x.option !== "none" &&
+        (!x.tier || tierValue(x.option, x.tier) !== x.value)
+          ? [
+              `${e.part} ${i + 1}번: 기존 수치 ${x.value}%의 단계를 확인해 주세요.`,
+            ]
+          : [],
+      ),
+    ];
+  });
+}
+export interface Deficit {
+  key: TargetOption;
+  targetCount: number;
+  currentCount: number;
+  targetValue: number;
+  currentValue: number;
+  missingCount: number;
+  missingValue: number;
+  slotIds: string[];
+}
+export function normalizedValue(s: Slot, key: TargetOption): number {
+  // Canonical tier lookup removes rounding drift in the 2.88 ratio.
+  return key === "critical" && s.option === "critDamage"
+    ? (tierValue("crit", s.tier) ?? s.value / 2.88)
+    : s.value;
+}
+export function deficits(s: State, stage: Stage): Deficit[] {
+  const t = s.targets[stage];
+  const all = s.equipment
+    .flatMap((e, p) => e.slots.map((slot, j) => ({ slot, id: `${p}:${j}` })))
+    .filter((x) => x.slot.option !== "none");
+  const make = (key: TargetOption, assigned: typeof all): Deficit => ({
+    key,
+    targetCount: t[key].lines,
+    currentCount: assigned.length,
+    targetValue: t[key].total,
+    currentValue: assigned.reduce(
+      (a, x) => a + normalizedValue(x.slot, key),
       0,
-    ) +
-      1e-7 >=
-      r.total
+    ),
+    missingCount: Math.max(0, t[key].lines - assigned.length),
+    missingValue: Math.max(
+      0,
+      t[key].total -
+        assigned.reduce((a, x) => a + normalizedValue(x.slot, key), 0),
+    ),
+    slotIds: assigned.map((x) => x.id),
+  });
+  const criticals = all.filter(
+    (x) => x.slot.option === "crit" || x.slot.option === "critDamage",
   );
+  const keys: TargetOption[] = ["crit", "critDamage", "critical"];
+  let best = keys.map((k) => make(k, [])),
+    bestScore = -Infinity;
+  const groups: (typeof all)[] = [[], [], []];
+  const assign = (i: number) => {
+    if (i === criticals.length) {
+      const rows = keys.map((k, j) => make(k, groups[j]));
+      // Equal priority for count and value satisfaction; never add raw counts to percentages.
+      const score = rows.reduce(
+        (a, r) =>
+          a +
+          (r.targetCount
+            ? Math.min(1, r.currentCount / r.targetCount) +
+              Math.min(1, r.currentValue / (r.targetValue || 1)) +
+              (r.missingCount === 0 && r.missingValue < 1e-7 ? 4 : 0)
+            : 0),
+        0,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = rows;
+      }
+      return;
+    }
+    assign(i + 1);
+    keys.forEach((k, j) => {
+      if (t[k].lines && (k === "critical" || criticals[i].slot.option === k)) {
+        groups[j].push(criticals[i]);
+        assign(i + 1);
+        groups[j].pop();
+      }
+    });
+  };
+  assign(0);
+  return [
+    ...OPTIONS.filter((o) => o.id !== "crit" && o.id !== "critDamage").map(
+      (o) =>
+        make(
+          o.id,
+          t[o.id].lines ? all.filter((x) => x.slot.option === o.id) : [],
+        ),
+    ),
+    ...best,
+  ].filter((r) => r.targetCount > 0);
 }
 export function achievement(
   s: State,
@@ -170,42 +283,14 @@ export function achievement(
   status: "empty" | "invalid" | "met" | "unmet";
   checks: Record<string, boolean>;
 } {
-  const t = s.targets[stage],
-    slots = s.equipment.flatMap((e) => e.slots),
-    checks: Record<string, boolean> = {};
-  if (lineCount(t) > 12) return { status: "invalid", checks };
-  for (const o of OPTIONS.filter(
-    (o) => o.id !== "crit" && o.id !== "critDamage",
-  ))
-    checks[o.id] = subsets(
-      slots.filter((s) => s.option === o.id),
-      t[o.id].lines,
-    ).some((x) => matches(x, t[o.id]));
-  const criticals = slots.filter(
-    (s) => s.option === "crit" || s.option === "critDamage",
-  );
-  // Exhaustive disjoint assignment over at most twelve slots, not probability optimization.
-  const canAssign = (keys: TargetOption[], rest: Slot[]): boolean => {
-    if (!keys.length) return true;
-    const [key, ...next] = keys,
-      req = t[key];
-    return subsets(
-      rest.filter((s) => key === "critical" || s.option === key),
-      req.lines,
-    ).some(
-      (group) =>
-        matches(group, req, key === "critical") &&
-        canAssign(
-          next,
-          rest.filter((s) => !group.includes(s)),
-        ),
+  if (lineCount(s.targets[stage]) > 12 || equipmentIssues(s).length)
+    return { status: "invalid", checks: {} };
+  const rows = deficits(s, stage),
+    checks = Object.fromEntries(
+      rows.map((r) => [r.key, r.missingCount === 0 && r.missingValue < 1e-7]),
     );
-  };
-  const criticalOK = canAssign(["crit", "critDamage", "critical"], criticals);
-  for (const key of ["crit", "critDamage", "critical"])
-    checks[key] = criticalOK;
   return {
-    status: !lineCount(t)
+    status: !rows.length
       ? "empty"
       : Object.values(checks).every(Boolean)
         ? "met"
@@ -213,15 +298,38 @@ export function achievement(
     checks,
   };
 }
-function subsets<T>(list: T[], n: number): T[][] {
-  if (!n) return [[]];
-  if (list.length < n) return [];
-  if (n === list.length) return [list];
-  const [first, ...rest] = list;
-  return [
-    ...subsets(rest, n - 1).map((s) => [first, ...s]),
-    ...subsets(rest, n),
-  ];
+export function targetSignature(t: Target) {
+  return JSON.stringify([
+    DATA_REVISION,
+    targetOptions.map((o) => [
+      o.id,
+      t[o.id].lines,
+      t[o.id].averageTier,
+      t[o.id].total,
+    ]),
+  ]);
+}
+export function inputSignature(s: State) {
+  return JSON.stringify([
+    DATA_REVISION,
+    s.equipment,
+    STAGES.map((k) => targetSignature(s.targets[k])),
+    s.resources.modules.budget,
+    s.style,
+  ]);
+}
+export function resultIsCurrent(r: EngineResult | null, s: State) {
+  return !!r && r.inputSignature === inputSignature(s);
+}
+export function progress(s: State, stage: Stage, r: GoalResult): number | null {
+  const base = s.baselines[stage];
+  return base &&
+    base.signature === targetSignature(s.targets[stage]) &&
+    base.cost > 0 &&
+    r.stable &&
+    r.expectedModules !== null
+    ? Math.max(0, Math.min(1, 1 - r.expectedModules / base.cost))
+    : null;
 }
 export function recommend(
   r: EngineResult,
@@ -236,41 +344,6 @@ export function recommend(
           (style === "safe" ? 0.9 : 0.5),
       ) ?? null
   );
-}
-export function demoResult(s: State): EngineResult {
-  const budget = s.resources.modules.budget;
-  // Explicit fixture table. This is a UI demonstration, not a cost/probability model.
-  const probs =
-    budget >= 120
-      ? [0.99, 0.95, 0.72]
-      : budget >= 60
-        ? [0.96, 0.74, 0.32]
-        : budget >= 20
-          ? [0.78, 0.42, 0.12]
-          : [0, 0, 0];
-  const r: EngineResult = {
-    source: "demo",
-    goals: Object.fromEntries(
-      STAGES.map((stage, i) => [
-        stage,
-        { expectedModules: [24, 68, 156][i], successProbability: probs[i] },
-      ]),
-    ) as EngineResult["goals"],
-    recommendedStage: null,
-    nextAction: null,
-  };
-  r.recommendedStage = recommend(r, s.style);
-  if (r.recommendedStage)
-    r.nextAction = {
-      part: "다리",
-      action: "효과 변경",
-      lockSlots: [0],
-      reason:
-        "가상 시나리오: 우월 코드 옵션을 유지하고 남은 슬롯의 유효 옵션을 확보합니다.",
-      modules: 2,
-      lockKeys: 0,
-    };
-  return r;
 }
 export function demoState(): State {
   const s = initialState();
@@ -288,28 +361,20 @@ export function demoState(): State {
           ? {
               option: opts[i][j],
               tier: 5 + j,
-              value: tierValue(opts[i][j], 5 + j, true)!,
-              locked: j === 0,
+              value: tierValue(opts[i][j], 5 + j)!,
+              locked: false,
             }
           : emptySlot(),
       )),
   );
   STAGES.forEach((stage, i) => {
     for (const [key, lines] of [
-      ["code", [2, 3, 4][i]],
-      ["attack", [2, 3, 4][i]],
-      ["ammo", [0, 2, 3][i]],
-      ["critical", [0, 0, 1][i]],
+      ["code", 4],
+      ["attack", 0],
+      ["ammo", 0],
+      ["critical", 0],
     ] as [TargetOption, number][])
-      s.targets[stage][key] = {
-        lines,
-        averageTier: [5, 7, 10][i],
-        total:
-          Math.round((tierValue(key, [5, 7, 10][i], true) ?? 0) * lines * 100) /
-          100,
-        floors: Array(lines).fill(0),
-        manual: false,
-      };
+      s.targets[stage][key] = makeRequirement(key, lines, [5, 7, 10][i]);
   });
   return s;
 }
@@ -323,8 +388,10 @@ const num = (x: unknown, max = 1000000, integer = false) =>
   (!integer || Number.isInteger(x));
 export function parseState(raw: string, allowInvalidTargets = false): State {
   const s: unknown = JSON.parse(raw);
-  if (!isObject(s) || s.schemaVersion !== 2)
-    throw Error("지원하지 않는 스키마 버전입니다. v2 JSON을 선택해 주세요.");
+  if (!isObject(s) || ![2, 3].includes(s.schemaVersion))
+    throw Error(
+      "지원하지 않는 스키마 버전입니다. v2 또는 v3 JSON을 선택해 주세요.",
+    );
   if (
     !Array.isArray(s.equipment) ||
     s.equipment.length !== 4 ||
@@ -361,7 +428,7 @@ export function parseState(raw: string, allowInvalidTargets = false): State {
             num(r.total) &&
             typeof r.manual === "boolean" &&
             Array.isArray(r.floors) &&
-            r.floors.length === r.lines &&
+            (s.schemaVersion === 3 || r.floors.length === r.lines) &&
             r.floors.every((n: unknown) => num(n, TIER_COUNT, true)) &&
             (r.lines > 0 || r.total === 0)
           );
@@ -394,5 +461,63 @@ export function parseState(raw: string, allowInvalidTargets = false): State {
     typeof s.ui.equipmentOpen !== "boolean"
   )
     throw Error("설정 데이터가 올바르지 않습니다.");
-  return s as State;
+  const migrated = structuredClone(s) as State;
+  const wasLegacy = s.schemaVersion === 2;
+  migrated.schemaVersion = 3;
+  migrated.migrationNotes = wasLegacy
+    ? [
+        "v2.0에서 가져왔습니다. 사용 가능 모듈은 기존 투자 예산이며, 목표 합계는 단계 기준으로 변환했습니다.",
+      ]
+    : Array.isArray(s.migrationNotes) &&
+        s.migrationNotes.every((x: unknown) => typeof x === "string")
+      ? s.migrationNotes.slice(0, 20)
+      : [];
+  migrated.baselines = {};
+  if (!wasLegacy && isObject(s.baselines))
+    for (const stage of STAGES) {
+      const b = s.baselines[stage];
+      if (
+        b &&
+        isObject(b) &&
+        typeof b.signature === "string" &&
+        num(b.cost, 1e15)
+      )
+        migrated.baselines[stage] = { signature: b.signature, cost: b.cost };
+    }
+  migrated.resources.modules.owned = migrated.resources.modules.budget;
+  for (const e of migrated.equipment)
+    for (const x of e.slots) {
+      if (x.option !== "none" && tierValue(x.option, x.tier) !== x.value) {
+        const found = Array.from({ length: 15 }, (_, i) => i + 1).find(
+          (n) => Math.abs((tierValue(x.option, n) ?? 0) - x.value) < 1e-7,
+        );
+        if (!wasLegacy && found === undefined && x.tier !== 0)
+          throw Error("단계와 수치가 일치하지 않습니다.");
+        x.tier = found ?? 0;
+      }
+    }
+  for (const stage of STAGES)
+    for (const o of targetOptions) {
+      const r = migrated.targets[stage][o.id];
+      const average =
+        wasLegacy && (r.manual || !r.averageTier) && r.lines
+          ? (Array.from({ length: 15 }, (_, i) => i + 1).find(
+              (n) => (tierValue(o.id, n) ?? 0) * r.lines + 1e-7 >= r.total,
+            ) ?? 15)
+          : r.averageTier;
+      if (wasLegacy && r.floors.some(Boolean))
+        migrated.migrationNotes.push(
+          `${STAGE_NAMES[stage]} ${o.short}: v2.0 줄별 하한은 제거되었습니다.`,
+        );
+      if (wasLegacy && r.total > (tierValue(o.id, 15) ?? 0) * r.lines)
+        migrated.migrationNotes.push(
+          `${STAGE_NAMES[stage]} ${o.short}: 기존 직접 합계가 최대 단계를 초과해 15단계로 변환했습니다.`,
+        );
+      migrated.targets[stage][o.id] = makeRequirement(
+        o.id,
+        r.lines,
+        r.lines ? Math.max(1, average) : 0,
+      );
+    }
+  return migrated;
 }
