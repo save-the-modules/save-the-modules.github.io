@@ -1,12 +1,13 @@
 {
   "name": "save-the-modules",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "tsx --test src/model.test.ts",
+    "test": "tsx --test src/model.test.ts src/planner.test.ts",
+    "benchmark": "tsx scripts/benchmark.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

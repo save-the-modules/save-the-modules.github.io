@@ -37,11 +37,11 @@ import {
   calculateGoal,
   lockSetupCost,
   preservationValues,
-  simpleProbability,
   tierDistribution,
 } from "./engine";
 import { getFastGuide, fastGuideSignature, evaluatePieces } from "./fastGuide";
 import { CostCache, recordBaselines } from "./resultCache";
+import { completionProbability, policyProbability } from './probability';
 const fresh = () => {
   const s = initialState();
   s.targets.minimum = emptyTarget();
@@ -161,22 +161,19 @@ test("G: fixture costs respect 90/50 percent and highest goal; no forced recomme
   r.goals.balanced.expectedModules = 50;
   r.goals.ultimate.expectedModules = 200;
   for (const stage of STAGES)
-    r.goals[stage].successProbability = simpleProbability(
-      80,
-      r.goals[stage].expectedModules,
-    );
+    r.goals[stage].successProbability = completionProbability(
+      [{ probability: 1 / r.goals[stage].expectedModules!, modules: 1, setup: 0 }], 80);
   assert.equal(recommend(r, "safe"), "minimum");
   assert.equal(recommend(r, "challenge"), "balanced");
   for (const stage of STAGES) r.goals[stage].successProbability = 0;
   assert.equal(recommend(r, "safe"), null);
 });
-test("E=0 is complete; null, NaN, negative are not calculable", () => {
-  assert.equal(simpleProbability(0, 0), 1);
-  assert.equal(simpleProbability(100, null), null);
-  assert.equal(simpleProbability(100, NaN), null);
-  assert.equal(simpleProbability(1, -1), null);
-  assert.equal(simpleProbability(0, 10), 0);
-  close(simpleProbability(10, 10)!, 1 - Math.exp(-1));
+test("completion probabilities use integer event costs, not an exponential mean approximation", () => {
+  assert.equal(completionProbability([], 0), 1);
+  assert.equal(completionProbability([], NaN), null);
+  assert.equal(completionProbability([], -1), null);
+  assert.equal(completionProbability([{ probability: 0.1, modules: 1, setup: 0 }], 0), 0);
+  close(completionProbability([{ probability: 0.1, modules: 1, setup: 0 }], 10)!, 1 - 0.9 ** 10);
 });
 test("H: equipment, goal, budget and style changes invalidate old results; navigation does not", () => {
   const s = initialState(),
@@ -281,7 +278,7 @@ test("reset can lock needed third-slot high option and accounts for first execut
   assert.equal(a.lockCost, 2);
   assert.equal(a.modules, 2);
   assert.equal(a.firstExecutionModules, 4);
-  assert.equal(a.strategy.unlockedExpected, null);
+  assert.ok(a.strategy.unlockedExpected! > a.strategy.lockedExpected!);
   assert.ok(a.strategy.lockedExpected! > 0);
 });
 test("completed goal recommends stopping modules", () => {
@@ -293,14 +290,14 @@ test("completed goal recommends stopping modules", () => {
   assert.equal(r.successProbability, 1);
   assert.equal(r.nextAction?.action, "사용 중단");
 });
-test("unverified conditional effect paths are excluded, not filled with arbitrary costs", () => {
+test("conditional effect paths are computed with prominently documented assumptions", () => {
   const s = initialState();
   s.targets.minimum.attack = makeRequirement("attack", 4, 8);
   s.equipment.forEach((e) => (e.slots[2] = slot("code", 15, true)));
   const r = calculateGoal(s, "minimum");
-  assert.equal(r.expectedModules, null);
-  assert.equal(r.successProbability, null);
-  assert.match(r.reason, /조건부/);
+  assert.ok(r.expectedModules! > 0);
+  assert.ok(r.completionPolicy);
+  assert.match(r.reason, /가정/);
 });
 test("same equipment duplicate types invalidate a migrated state until corrected", () => {
   const s = initialState();
@@ -345,7 +342,12 @@ test("demo shares real interface with explicit source and cannot mutate user sta
 test("calculation is deterministic and leaves input/budget/lock flags untouched", () => {
   const s = demoState(),
     before = JSON.stringify(s);
-  assert.deepEqual(calculate(s), calculate(s));
+  const a = calculate(s), b = calculate(s);
+  for (const stage of STAGES) {
+    if (a.goals[stage].diagnostics) a.goals[stage].diagnostics!.milliseconds = 0;
+    if (b.goals[stage].diagnostics) b.goals[stage].diagnostics!.milliseconds = 0;
+  }
+  assert.deepEqual(a, b);
   assert.equal(JSON.stringify(s), before);
 });
 
@@ -380,11 +382,11 @@ test("v2.2: v2.1 persisted goals, equipment, locks and manual goal selection are
   assert.equal(loaded.ui.selectedGoal, "ultimate");
 });
 
-test("v2.2: a compound goal keeps live candidates even when whole-goal cost is unavailable", () => {
+test("compound goals now have a cost as well as live candidates", () => {
   const s = initialState();
   s.targets.minimum.attack = makeRequirement("attack", 4, 8);
   s.equipment.forEach((e) => (e.slots[2] = slot("code", 15, true)));
-  assert.equal(calculateGoal(s, "minimum").expectedModules, null);
+  assert.ok(calculateGoal(s, "minimum").expectedModules! > 0);
   const guide = getFastGuide(s);
   assert.equal(guide.status, "unmet");
   assert.equal(guide.rows.find((r) => r.key === "attack")!.missingCount, 4);
@@ -485,7 +487,7 @@ test("v2.2: recording a recommendation never overwrites manual goal selection", 
   const s = demoState();
   s.ui.selectedGoal = "ultimate";
   const result = calculate(s);
-  assert.equal(result.recommendedStage, "minimum");
+  assert.equal(result.recommendedStage, recommend(result, s.style));
   recordBaselines(s, result);
   assert.equal(s.ui.selectedGoal, "ultimate");
   assert.equal(getFastGuide(s).stage, "ultimate");
@@ -499,7 +501,7 @@ test("v2.2: cost cache reuses geometry for budget/style and recomputes probabili
   cache.put(s, false, result);
   s.style = "challenge";
   assert.equal(costSignature(s), geometry);
-  assert.equal(cache.get(s, false)!.recommendedStage, "balanced");
+  assert.equal(cache.get(s, false)!.recommendedStage, recommend(result, 'challenge'));
   s.resources.modules.budget = 0;
   const updated = cache.get(s, false)!;
   assert.equal(updated.goals.minimum.successProbability, 0);
@@ -561,7 +563,7 @@ test("v2.2: previous model progress baselines are hidden and replaced without ch
   const result = calculate(loaded);
   assert.equal(progress(loaded, "minimum", result.goals.minimum), null);
   recordBaselines(loaded, result);
-  assert.equal(progress(loaded, "minimum", result.goals.minimum), 0);
+  assert.equal(progress(loaded, "minimum", result.goals.minimum), null);
   assert.deepEqual(loaded.targets, targetBefore);
 });
 

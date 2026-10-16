@@ -87,29 +87,31 @@ export function GuidePanel({
       </section>
       {stale && (
         <div className="notice stale-notice" role="status">
-          장비·목표가 변경되어 이전 비용과 확률을 숨겼습니다. 빠른 가이드는 현재
-          상태입니다. 비용이 필요할 때 최적화 계산을 다시 실행하세요.
+          장비·목표가 변경되어 이전 비용과 확률을 숨겼습니다. 현재 입력으로 자동 재계산합니다.
         </div>
       )}
       {isDemo && (
         <p className="demo-result-label">
-          예시 장비 · 사용자 데이터와 분리된 데모 결과입니다. 확률은 단순
-          근사입니다.
+          예시 장비 · 사용자 데이터와 분리된 데모 결과입니다.
         </p>
       )}
       <div className="compare-heading">
         <h3>목표별 투자 비교</h3>
         <details className="probability-info">
-          <summary aria-label="예상 달성 확률의 근사 모델 설명">
+          <summary aria-label="예산 내 달성 확률의 계산 정책 설명">
             <Info size={16} /> 예상 달성 확률
           </summary>
           <p>
-            추정 평균 비용 E와 사용 가능 모듈 B에 대한 지수분포 근사
-            P=1−exp(−B/E)입니다. 실제 게임 성공 확률이나 정밀한 완료 분포가
-            아닙니다. 비용을 계산하지 못한 경로에는 확률을 표시하지 않습니다.
+            아래 고정 배분 정책의 완료 비용 분포를 합성한 값입니다. 첫 잠금 비용과
+            매회 리롤 비용을 구분하며, 평균 비용에서 확률을 역산하지 않습니다.
+            중간 결과를 채용해 재계산하면 정책이 달라집니다. 미검증 추첨 가정에 의존합니다.
           </p>
         </details>
       </div>
+      <p className="notice" role="note">
+        가정 기반 보수적 계산 · 추첨 순서·독립성·중복 제외 후 확률은 공식 확인 전입니다.
+        단계적 확보·잠금 정책과 일괄 달성 정책을 비교하며, 모든 전략의 최소 비용은 아닙니다.
+      </p>
       <div className="goal-comparison">
         {STAGES.map((stage) => {
           const r = result?.goals[stage],
@@ -151,7 +153,7 @@ export function GuidePanel({
                 · {lineCount(state.targets[stage])}줄
               </span>
               <dl>
-                <dt>예상 모듈 소모</dt>
+                <dt>보수적 정책 예상 소모</dt>
                 <dd>
                   {!r
                     ? "계산 전"
@@ -159,7 +161,7 @@ export function GuidePanel({
                       ? "계산 불가"
                       : `약 ${r.expectedModules.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}개`}
                 </dd>
-                <dt>예상 달성 확률</dt>
+                <dt>같은 정책의 예산 내 확률</dt>
                 <dd
                   className={
                     r?.successProbability !== null &&
@@ -172,7 +174,11 @@ export function GuidePanel({
                     ? "계산 전"
                     : r.successProbability === null
                       ? "계산 불가"
-                      : `${(r.successProbability * 100).toFixed(1)}%`}
+                      : r.successProbability > 0 && r.successProbability < 0.0005
+                        ? "0.1% 미만"
+                        : r.successProbability < 1 && r.successProbability >= 0.9995
+                          ? "99.9% 초과"
+                          : `${(r.successProbability * 100).toFixed(1)}%`}
                 </dd>
               </dl>
               <ul
@@ -190,7 +196,7 @@ export function GuidePanel({
               </ul>
               <span className="criteria">
                 {!r
-                  ? "최적화 계산을 실행하세요."
+                  ? "자동 계산 대기 중"
                   : r.successProbability === null
                     ? "추천 기준 판정 불가"
                     : r.successProbability >= threshold
@@ -217,9 +223,9 @@ export function GuidePanel({
           있습니다.
         </p>
       )}
-      <FastGuidePanel guide={guide} state={state} isDemo={isDemo} />
+      {!result && <FastGuidePanel guide={guide} state={state} isDemo={isDemo} />}
       {result && (
-        <details className="next-action panel cost-action">
+        <details open className="next-action panel cost-action">
           <summary>비용 계산 경로의 첫 행동 · 현재 장비 기준</summary>
           <div className="action-topline">
             <span>
@@ -227,7 +233,7 @@ export function GuidePanel({
               {STAGE_NAMES[selected]} · 다음 행동
             </span>
             <span className="small-badge">
-              {result ? "규칙 기반 근사" : "계산 전"}
+              {result ? "가정 기반 배분 비교" : "계산 전"}
             </span>
           </div>
           {!result ? (
@@ -274,7 +280,7 @@ export function GuidePanel({
                       </b>
                     </div>
                     <div>
-                      <small>이후 반복</small>
+                      <small>현재 잠금 유지 시</small>
                       <b>회당 {a.modules}개</b>
                     </div>
                   </div>
@@ -312,9 +318,18 @@ export function GuidePanel({
               {g.reason}
             </p>
           )}
+          {g?.allocation && (
+            <div className="piece-priorities">
+              <h3>4부위 목표 배분</h3>
+              <ul>{g.allocation.map(p => <li key={p.part}>
+                <b>{p.part}</b> · {p.targets.join(' + ') || '추가 목표 없음'} · 약 {p.expectedModules.toFixed(1)}개
+              </li>)}</ul>
+              <p>현재 유효 옵션은 추가로 보존합니다. 높은 현재 수치를 다른 부위의 목표 합계에 반영합니다.</p>
+            </div>
+          )}
           <p className="approx-label">
-            {isDemo ? "데모 결과 · " : ""}단순 근사 결과입니다. 최적해·실제 성공
-            확률을 보장하지 않습니다.
+            {isDemo ? "데모 결과 · " : ""}표시된 배분과 정책의 비교 결과입니다. 목표 배분 변경이나
+            더 폭넓은 적응형 전략은 더 저렴할 수 있습니다. 변경 결과를 입력하고 다시 확인하세요.
           </p>
         </details>
       )}
@@ -356,7 +371,7 @@ export function GuidePanel({
         <p>
           사용자가 확인한 첫·둘째 영구 잠금 비용 2·3개 및 동일 조합 재추첨
           규칙을 반영합니다. 세 번째 잠금, 임시 잠금권, 잠금 후 옵션 종류의
-          조건부 추첨은 제외합니다.
+          조건부 추첨은 위에 명시한 가정으로 계산합니다.
         </p>
       </details>
     </>

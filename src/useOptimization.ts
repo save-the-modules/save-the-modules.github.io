@@ -89,5 +89,13 @@ export function useOptimization(
       );
     }
   };
+  useEffect(() => {
+    // Debounce edits, cancel obsolete jobs immediately, never display stale recommendations.
+    worker.current?.terminate();
+    worker.current = null;
+    setBusy(false);
+    const timer = setTimeout(run, 350);
+    return () => { clearTimeout(timer); worker.current?.terminate(); worker.current = null; };
+  }, [geometry, dataset]);
   return { result, guide, stale: calculated[dataset] && !result, busy, run };
 }

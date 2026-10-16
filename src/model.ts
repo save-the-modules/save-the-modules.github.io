@@ -1,5 +1,5 @@
 import { DATA_REVISION, tierValue, TIER_COUNT } from "./data/tiers";
-export const MODEL_REVISION = "stm-v2.2-conservative-local-events";
+export const MODEL_REVISION = "stm-v2.3-allocation-retention-budget-dp-v1";
 export const DEFAULT_EQUIPMENT_TIER = 11;
 export const DEFAULT_TARGET_TIER = 8;
 export const OPTIONS = [
@@ -83,6 +83,9 @@ export interface GoalResult {
   reason: string;
   nextAction: NextAction | null;
   stable: boolean;
+  completionPolicy?: import('./probability').CompletionPolicy;
+  allocation?: { part: string; targets: string[]; expectedModules: number }[];
+  diagnostics?: { allocations: number; localEvaluations: number; milliseconds: number; limited: boolean };
 }
 export interface EngineResult {
   source: "engine" | "demo";
