@@ -52,11 +52,16 @@ test('representative 4 / 6 / 12 line goals produce finite policies and internall
   for (const count of [0, 1, 4]) {
     const s = fixture(count), r = calculateGoal(s, 'minimum');
     assert.ok(r.expectedModules! > 0 && r.expectedModules! < 2000);
-    close(r.expectedModules!, policyExpectation(r.completionPolicy!), 1e-7);
-    assert.equal(r.successProbability, policyProbability(r.completionPolicy!, 100));
+    if (r.simulation) {
+      close(r.expectedModules!, r.simulation.costs.reduce((a, b) => a + b, 0) / r.simulation.samples);
+      assert.equal(r.successProbability, r.simulation.costs.filter(c => c <= 100).length / r.simulation.samples);
+    } else {
+      close(r.expectedModules!, policyExpectation(r.completionPolicy!), 1e-7);
+      assert.equal(r.successProbability, policyProbability(r.completionPolicy!, 100));
+    }
     assert.equal(r.allocation!.flatMap(a => a.targets).length, 4 + count * 2);
     assert.equal(r.diagnostics!.limited, false);
-    assert.ok(r.completionPolicy!.nodes.length < 50000);
+    assert.ok((r.completionPolicy?.nodes.length ?? r.simulation!.samples) < 50000);
   }
 });
 test('concentrated and distributed assignments both remain available and reuse existing gear', () => {

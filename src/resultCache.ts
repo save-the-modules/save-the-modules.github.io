@@ -8,6 +8,7 @@ import {
   type State,
 } from "./model";
 import { policyProbability } from "./probability";
+import { sampleProbability } from './sumPolicy';
 
 // A bounded, per-dataset memory cache. Demo and user data never share entries.
 export class CostCache {
@@ -33,7 +34,9 @@ export class CostCache {
     const result = structuredClone(saved);
     result.inputSignature = inputSignature(s);
     for (const stage of STAGES)
-      result.goals[stage].successProbability = result.goals[stage].completionPolicy
+      result.goals[stage].successProbability = result.goals[stage].simulation
+        ? sampleProbability(result.goals[stage].simulation!.costs, s.resources.modules.budget)
+        : result.goals[stage].completionPolicy
         ? policyProbability(result.goals[stage].completionPolicy!, s.resources.modules.budget)
         : null;
     result.recommendedStage = recommend(result, s.style);

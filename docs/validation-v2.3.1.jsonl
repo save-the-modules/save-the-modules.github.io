@@ -1,0 +1,14 @@
+{"policy":"legacy analytic","refine":false,"shortlistSize":1,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy analytic","refine":false,"shortlistSize":32,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy analytic","refine":false,"shortlistSize":100000,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy analytic","refine":true,"shortlistSize":1,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy analytic","refine":true,"shortlistSize":32,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy analytic","refine":true,"shortlistSize":100000,"mean":326.6145903949328,"allocations":16,"p150":0.07196711822668074}
+{"policy":"legacy independent","n":8192,"censored":0,"mean":326.0931396484375,"ci95":3.2278408287555727,"p100":0.0103759765625,"p150":0.072998046875,"p300":0.510498046875}
+{"policy":"reset + retention","adaptive":false,"individual":true,"n":8192,"censored":0,"mean":117.557861328125,"ci95":0.8442567306381614,"p100":0.3719482421875,"p150":0.815673828125,"p300":0.999267578125,"milliseconds":5642.207899999999}
+{"policy":"reset + retention","adaptive":false,"individual":false,"n":8192,"censored":0,"mean":106.0740966796875,"ci95":0.8232771062853064,"p100":0.50732421875,"p150":0.8809814453125,"p300":0.99951171875,"milliseconds":4522.164199999999}
+{"policy":"reset + retention","adaptive":true,"individual":true,"n":8192,"censored":0,"mean":128.2061767578125,"ci95":1.3428135762108062,"p100":0.3751220703125,"p150":0.748779296875,"p300":0.9779052734375,"milliseconds":6584.915000000001}
+{"policy":"reset + retention","adaptive":true,"individual":false,"n":8192,"censored":0,"mean":114.17431640625,"ci95":1.254687725587656,"p100":0.4967041015625,"p150":0.8138427734375,"p300":0.986328125,"milliseconds":8243.865300000001}
+{"case":"4code+0attack+0ammo","n":8192,"censored":0,"mean":27.393798828125,"ci95":0.23673869824043436,"p100":1,"p150":1,"p300":1,"milliseconds":3214.9473}
+{"case":"4code+1attack+1ammo","n":8192,"censored":0,"mean":67.6336669921875,"ci95":0.5970749465828911,"p100":0.88671875,"p150":0.9886474609375,"p300":0.9998779296875,"milliseconds":4050.145199999999}
+{"case":"4code+4attack+4ammo","n":8192,"censored":0,"mean":327.62255859375,"ci95":2.8752090805791473,"p100":0.001220703125,"p150":0.0386962890625,"p300":0.491455078125,"milliseconds":8426.399100000002}

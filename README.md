@@ -1,4 +1,10 @@
-# Save the Modules (STM) v2.3
+# Save the Modules (STM) v2.3.1
+
+합계 목표에서 낮은 단계 채용 → 수치 재설정 경로를 추가했습니다. 특정 옵션 3종 이하에서 종류 고정/재배분 정책을 비교하고 별도 2,048회 표본으로 평균과 예산 확률을 추정합니다. 표본 오차와 계산 한도를 표시하며, 적용 범위 밖/꼬리 검증 실패 시 기존 해석적 정책을 유지합니다. 저장 스키마·배포 방식은 유지합니다.
+
+- [원인 분석과 동일 조건 검증](docs/SUM-AUDIT.md)
+- 독립 검증: `npm run validate:sums` (기본 각 8,192회, `STM_SAMPLES`로 변경)
+- `npm test`, `npm run build`, `npm run benchmark`
 
 니케 오버로드 장비 4부위의 목표 배분·잠금·리롤을 비교하는 웹 계산기입니다. React / TypeScript / Vite 기반이며 서버나 계정 없이 브라우저에서 계산합니다.
 

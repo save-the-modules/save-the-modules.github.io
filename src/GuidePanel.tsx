@@ -10,6 +10,7 @@ import {
   type State,
 } from "./model";
 import { RULES } from "./data/tiers";
+import { sampleInterval } from './sumPolicy';
 import { NumberField } from "./controls";
 import type { Update } from "./TargetEditor";
 import { FastGuidePanel } from "./FastGuidePanel";
@@ -102,7 +103,7 @@ export function GuidePanel({
             <Info size={16} /> 예상 달성 확률
           </summary>
           <p>
-            아래 고정 배분 정책의 완료 비용 분포를 합성한 값입니다. 첫 잠금 비용과
+            선택 정책의 완료 비용 분포에서 계산합니다. 모의실험 결과에는 표본 오차가 있습니다. 첫 잠금 비용과
             매회 리롤 비용을 구분하며, 평균 비용에서 확률을 역산하지 않습니다.
             중간 결과를 채용해 재계산하면 정책이 달라집니다. 미검증 추첨 가정에 의존합니다.
           </p>
@@ -110,13 +111,14 @@ export function GuidePanel({
       </div>
       <p className="notice" role="note">
         가정 기반 보수적 계산 · 추첨 순서·독립성·중복 제외 후 확률은 공식 확인 전입니다.
-        단계적 확보·잠금 정책과 일괄 달성 정책을 비교하며, 모든 전략의 최소 비용은 아닙니다.
+        낮은 단계 채용 후 수치 재설정·합계 보완 경로도 비교하며, 모든 전략의 최소 비용은 아닙니다.
       </p>
       <div className="goal-comparison">
         {STAGES.map((stage) => {
           const r = result?.goals[stage],
             status = achievement(state, stage).status,
             pct = r ? progress(state, stage, r) : null;
+          const interval = r?.simulation ? sampleInterval(r.simulation.costs, state.resources.modules.budget) : null;
           return (
             <button
               key={stage}
@@ -153,7 +155,7 @@ export function GuidePanel({
                 · {lineCount(state.targets[stage])}줄
               </span>
               <dl>
-                <dt>보수적 정책 예상 소모</dt>
+                <dt>{r?.simulation ? '합계 보완 정책 예상 소모 (추정)' : '보수적 정책 예상 소모'}</dt>
                 <dd>
                   {!r
                     ? "계산 전"
@@ -174,11 +176,14 @@ export function GuidePanel({
                     ? "계산 전"
                     : r.successProbability === null
                       ? "계산 불가"
+                      : r.simulation && (r.successProbability === 0 || r.successProbability === 1)
+                        ? `${(r.successProbability * 100).toFixed(1)}% (표본 관측)`
                       : r.successProbability > 0 && r.successProbability < 0.0005
                         ? "0.1% 미만"
                         : r.successProbability < 1 && r.successProbability >= 0.9995
                           ? "99.9% 초과"
                           : `${(r.successProbability * 100).toFixed(1)}%`}
+                  {interval && <small style={{ display: 'block' }}>표본 95% 구간 {(interval[0] * 100).toFixed(1)}–{(interval[1] * 100).toFixed(1)}%</small>}
                 </dd>
               </dl>
               <ul
@@ -322,9 +327,9 @@ export function GuidePanel({
             <div className="piece-priorities">
               <h3>4부위 목표 배분</h3>
               <ul>{g.allocation.map(p => <li key={p.part}>
-                <b>{p.part}</b> · {p.targets.join(' + ') || '추가 목표 없음'} · 약 {p.expectedModules.toFixed(1)}개
+                <b>{p.part}</b> · {p.targets.join(' + ') || '추가 목표 없음'}{p.expectedModules === null ? '' : ` · 약 ${p.expectedModules.toFixed(1)}개`}
               </li>)}</ul>
-              <p>현재 유효 옵션은 추가로 보존합니다. 높은 현재 수치를 다른 부위의 목표 합계에 반영합니다.</p>
+              <p>{g.simulation ? '부위별 최소 단계는 고정하지 않습니다. 종류를 확보한 뒤 실제 높은 수치를 나머지 합계 부족분에 반영합니다.' : '현재 유효 옵션은 추가로 보존합니다. 높은 현재 수치를 다른 부위의 목표 합계에 반영합니다.'}</p>
             </div>
           )}
           <p className="approx-label">

@@ -296,7 +296,7 @@ test("conditional effect paths are computed with prominently documented assumpti
   s.equipment.forEach((e) => (e.slots[2] = slot("code", 15, true)));
   const r = calculateGoal(s, "minimum");
   assert.ok(r.expectedModules! > 0);
-  assert.ok(r.completionPolicy);
+  assert.ok(r.completionPolicy || r.simulation);
   assert.match(r.reason, /가정/);
 });
 test("same equipment duplicate types invalidate a migrated state until corrected", () => {

@@ -6,6 +6,7 @@ import { planAllocation } from '../src/planner';
 const cases = [
   { name: '4우코 T8', count: 0, tier: 8, locked: false },
   { name: '4우코+1공증+1장탄 T8', count: 1, tier: 8, locked: false },
+  { name: '4우코+3공증+1장탄 T8 명중1', count: 3, ammo: 1, tier: 8, locked: false, hit: true },
   { name: '4우코+4공증+4장탄 T8', count: 4, tier: 8, locked: false },
   { name: '4우코+4공증+4장탄 T15', count: 4, tier: 15, locked: false },
   { name: '기존 우코 T15 잠금 + 12줄 T8', count: 4, tier: 8, locked: true },
@@ -13,7 +14,8 @@ const cases = [
 console.log(JSON.stringify({ node: process.version, cpu: cpus()[0]?.model, platform: process.platform }));
 for (const c of cases) {
   const s = initialState();
-  for (const o of ['code', 'attack', 'ammo'] as Option[]) s.targets.minimum[o] = makeRequirement(o, o === 'code' ? 4 : c.count, c.tier);
+  for (const o of ['code', 'attack', 'ammo'] as Option[]) s.targets.minimum[o] = makeRequirement(o, o === 'code' ? 4 : o === 'ammo' ? c.ammo ?? c.count : c.count, c.tier);
+  if (c.hit) s.equipment.forEach(e => e.slots[0] = { option: 'hit', tier: 1, value: 4.77, locked: false });
   s.resources.modules = { owned: 100, budget: 100 };
   if (c.locked) s.equipment.forEach(e => e.slots[2] = { option: 'code', tier: 15, value: tierValue('code', 15)!, locked: true });
   const start = performance.now(), first = calculateGoal(s, 'minimum'), cold = performance.now() - start;
@@ -24,5 +26,6 @@ for (const c of cases) {
   console.log(JSON.stringify({ name: c.name, expected: first.expectedModules, probabilityAt100: first.successProbability,
     coldMs: +cold.toFixed(2), medianMs: +times[3].toFixed(2), maxMs: +times.at(-1)!.toFixed(2),
     allocations: first.diagnostics?.allocations, localEvaluations: first.diagnostics?.localEvaluations,
-    policyNodes: first.completionPolicy?.nodes.length, reverseOrderExpected: reverse?.cost }));
+    policyNodes: first.completionPolicy?.nodes.length, samples: first.simulation?.samples,
+    standardError: first.simulation?.standardError, adaptive: first.simulation?.adaptive, legacyReverseOrderExpected: reverse?.cost }));
 }

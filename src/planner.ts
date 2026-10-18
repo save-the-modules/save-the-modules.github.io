@@ -16,7 +16,8 @@ const label = (o: Option) => OPTIONS.find(x => x.id === o)!.short;
 /** Globally enumerate placements; compare whole-goal events and monotone retention policies.
  * This is NOT an adaptive Bellman optimum. See docs/ENGINE.md for the policy boundary.
  */
-export function planAllocation(s: State, stage: Stage, order: DrawOrder = 'forward'): AllocationPlan | null {
+export function planAllocation(s: State, stage: Stage, order: DrawOrder = 'forward',
+  audit: { refine?: boolean; shortlistSize?: number } = {}): AllocationPlan | null {
   const start = performance.now(), target = s.targets[stage];
   const rows = Object.entries(target).filter(([, r]) => r.lines > 0) as [TargetOption, State['targets'][Stage][TargetOption]][];
   const memo = new Map<string, LocalPlan>();
@@ -86,6 +87,7 @@ export function planAllocation(s: State, stage: Stage, order: DrawOrder = 'forwa
   type Candidate = ReturnType<typeof evaluate>;
   let best: Candidate | null = null;
   const shortlist: { score: number; assignments: Assignment[] }[] = [];
+  const shortlistSize = audit.shortlistSize ?? 32;
   const occupied = PARTS.map(() => new Set<Option>()), assigned: Assignment[] = [];
   const visit = (row: number) => {
     if (allocations >= 100000) { limited = true; return; }
@@ -94,10 +96,10 @@ export function planAllocation(s: State, stage: Stage, order: DrawOrder = 'forwa
       const candidate = evaluate(assigned);
       if (Number.isFinite(candidate.cost) && (!best || candidate.cost < best.cost)) best = candidate;
       const lower = evaluate(assigned.map(a => ({ ...a, tier: 1 })));
-      if (Number.isFinite(lower.cost) && (shortlist.length < 32 || lower.cost < shortlist.at(-1)!.score)) {
+      if (Number.isFinite(lower.cost) && (shortlist.length < shortlistSize || lower.cost < (shortlist.at(-1)?.score ?? -Infinity))) {
         shortlist.push({ score: lower.cost, assignments: assigned.map(a => ({ ...a })) });
         shortlist.sort((a, b) => a.score - b.score);
-        if (shortlist.length > 32) shortlist.pop();
+        if (shortlist.length > shortlistSize) shortlist.pop();
       }
       return;
     }
@@ -121,7 +123,7 @@ export function planAllocation(s: State, stage: Stage, order: DrawOrder = 'forwa
   // Refine promising placements using actual existing values as credits, then marginal cost.
   // Bounded candidate search, not an exhaustive search over all 15^12 tier allocations.
   if (best) shortlist.push({ score: (best as Candidate).cost, assignments: (best as Candidate).assignments });
-  for (const entry of shortlist) {
+  for (const entry of audit.refine === false ? [] : shortlist) {
     const a = entry.assignments.map(x => ({ ...x, tier: s.equipment[x.part].slots.find(slot => slot.option === x.option)?.tier || 1 }));
     for (const [key, r] of rows) {
       const group = a.filter(x => x.key === key);

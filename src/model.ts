@@ -1,5 +1,5 @@
 import { DATA_REVISION, tierValue, TIER_COUNT } from "./data/tiers";
-export const MODEL_REVISION = "stm-v2.3-allocation-retention-budget-dp-v1";
+export const MODEL_REVISION = "stm-v2.3.1-sum-reset-simulation-v1";
 export const DEFAULT_EQUIPMENT_TIER = 11;
 export const DEFAULT_TARGET_TIER = 8;
 export const OPTIONS = [
@@ -84,7 +84,8 @@ export interface GoalResult {
   nextAction: NextAction | null;
   stable: boolean;
   completionPolicy?: import('./probability').CompletionPolicy;
-  allocation?: { part: string; targets: string[]; expectedModules: number }[];
+  simulation?: { costs: number[]; standardError: number; samples: number; adaptive: boolean; seed: number };
+  allocation?: { part: string; targets: string[]; expectedModules: number | null }[];
   diagnostics?: { allocations: number; localEvaluations: number; milliseconds: number; limited: boolean };
 }
 export interface EngineResult {
