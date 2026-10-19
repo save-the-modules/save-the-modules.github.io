@@ -73,6 +73,7 @@ test('empirical budget cache uses same sample costs and preserves state/storage 
 });
 test('unsupported critical mixture and overlarge targets do not invent a sum simulation', () => {
   const s = initialState(); s.targets.minimum.critical = makeRequirement('critical', 1, 8);
+  s.targets.minimum.crit = makeRequirement('crit', 1, 8);
   assert.equal(sumContext(s, 'minimum'), null);
   s.targets.minimum.critical.lines = 0; s.targets.minimum.code.total = 1000;
   assert.equal(sumContext(s, 'minimum'), null);

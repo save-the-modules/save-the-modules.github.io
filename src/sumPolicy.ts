@@ -7,7 +7,7 @@ const kinds = OPTIONS.map(o => o.id);
 const values = kinds.map(o => Array.from({ length: 16 }, (_, t) => t ? Math.round(tierValue(o, t)! * 100) : 0));
 const weights = kinds.map(o => OPTION_WEIGHTS[o]);
 export interface Gear { kind: number[]; tier: number[]; locked: boolean[] }
-export interface SumContext { counts: number[]; totals: number[]; active: number[]; allocations: number[][] }
+export interface SumContext { counts: number[]; totals: number[]; active: number[]; allocations: number[][]; critical?: boolean }
 export interface SumSettings { adaptive: boolean; lockTier: number; individual: boolean }
 export interface SumAction { part: number; reset: boolean; locks: number[]; setup: number; modules: number; allocation: number[] }
 export interface Samples { costs: number[]; mean: number; standardError: number; censored: number; rolls: number }
@@ -16,22 +16,43 @@ export function gearFromState(s: State): Gear {
   return { kind: slots.map(s => kinds.indexOf(s.option as typeof kinds[number])), tier: slots.map(s => s.tier), locked: slots.map(s => s.locked) };
 }
 export const copyGear = (g: Gear): Gear => ({ kind: [...g.kind], tier: [...g.tier], locked: [...g.locked] });
+// Only the policy view merges critical kinds. The raw draw MUST retain their
+// physical identities, separate weights and same-kind/tier exclusions.
+function policyGear(c: SumContext, g: Gear, onePerPart = false): Gear {
+  if (!c.critical) return g;
+  const kind = g.kind.map(o => o === 7 ? 6 : o);
+  if (onePerPart) for (let p = 0; p < 4; p++) {
+    const js = [3 * p, 3 * p + 1, 3 * p + 2].filter(j => kind[j] === 6)
+      .sort((a, b) => Number(g.locked[b]) - Number(g.locked[a]) || g.tier[b] - g.tier[a]);
+    // A placement promises one critical line on this part. Surplus physical
+    // critical kinds must not become mandatory companions and block the other
+    // two target kinds. They still count in the actual terminal sum.
+    for (const j of js.slice(1)) kind[j] = -1;
+  }
+  return { ...g, kind };
+}
+function fitsLocks(mask: number, g: Gear, p: number): boolean {
+  let occupied = 0, covered = 0;
+  for (let j = p * 3; j < p * 3 + 3; j++) if (g.locked[j]) { occupied++; covered |= 1 << g.kind[j]; }
+  return occupied + bitCount(mask & ~covered) <= 3;
+}
 export function sumContext(s: State, stage: Stage): SumContext | null {
   const target = s.targets[stage];
   const active = kinds.flatMap((o, i) => target[o].lines ? [i] : []);
-  // Critical assignment and wide targets retain the analytic planner. Do not
-  // silently reinterpret their semantics, or allow unbounded placement search.
-  if (target.critical.lines || active.length > 3 || !active.length) return null;
+  // Specific crit plus wildcard needs exclusive assignment and still uses the
+  // analytic fallback. Pure wildcard has one logical, either-kind contribution.
+  const critical = target.critical.lines > 0;
+  if (critical && (target.crit.lines || target.critDamage.lines || target.critical.lines > 4)) return null;
+  if (critical) active.push(6);
+  if (active.length > 4 || !active.length) return null;
   const counts = kinds.map(o => target[o].lines), totals = kinds.map(o => Math.ceil(target[o].total * 100 - 1e-7));
+  if (critical) { counts[6] = target.critical.lines; totals[6] = Math.ceil(target.critical.total * 100 - 1e-7); }
   if (active.some(o => totals[o] > counts[o] * values[o][15])) return null;
   const allocations: number[][] = [], a = [0, 0, 0, 0], gear = gearFromState(s);
+  if (critical) gear.kind = gear.kind.map(o => o === 7 ? 6 : o);
   const visit = (i: number) => {
     if (i === active.length) {
-      if (a.some((mask, p) => {
-        const locked = [0, 1, 2].filter(j => gear.locked[3 * p + j]);
-        const blocked = locked.filter(j => !(mask & (1 << gear.kind[3 * p + j]))).length;
-        return bitCount(mask) + blocked > 3;
-      })) return;
+      if (a.some((mask, p) => !fitsLocks(mask, gear, p))) return;
       allocations.push([...a]); return;
     }
     const o = active[i];
@@ -43,7 +64,7 @@ export function sumContext(s: State, stage: Stage): SumContext | null {
     }
   };
   visit(0);
-  return allocations.length ? { active, counts, totals, allocations } : null;
+  return allocations.length ? { active, counts, totals, allocations, critical } : null;
 }
 const bitCount = (n: number) => { let count = 0; for (; n; n &= n - 1) count++; return count; };
 function totals(g: Gear, a?: number[]) {
@@ -52,6 +73,7 @@ function totals(g: Gear, a?: number[]) {
   return { count, sum };
 }
 export function sumMet(c: SumContext, g: Gear, settings: SumSettings): boolean {
+  g = policyGear(c, g);
   const t = totals(g);
   if (!settings.individual) return c.active.every(o => t.count[o] >= c.counts[o] && t.sum[o] >= c.totals[o]);
   return c.active.every(o => g.kind.filter((kind, j) => kind === o && values[o][g.tier[j]] * c.counts[o] >= c.totals[o]).length >= c.counts[o]);
@@ -65,12 +87,10 @@ function placementScore(c: SumContext, g: Gear, a: number[]): number {
   return result;
 }
 export function choosePlacement(c: SumContext, g: Gear): number[] {
+  g = policyGear(c, g, true);
   let best = c.allocations[0], score = -Infinity;
   for (const a of c.allocations) {
-    if (a.some((mask, p) => bitCount(mask) + [0, 1, 2].filter(j => {
-      const k = 3 * p + j;
-      return g.locked[k] && !(mask & (1 << g.kind[k]));
-    }).length > 3)) continue;
+    if (a.some((mask, p) => !fitsLocks(mask, g, p))) continue;
     const v = placementScore(c, g, a);
     if (v > score) { best = a; score = v; }
   }
@@ -87,6 +107,7 @@ function score(c: SumContext, g: Gear, a: number[], individual: boolean): [numbe
 }
 export function acceptSum(c: SumContext, before: Gear, after: Gear, settings: SumSettings, fixed: number[]): boolean {
   if (sumMet(c, after, settings)) return true;
+  before = policyGear(c, before, true); after = policyGear(c, after, true);
   const a = settings.adaptive ? choosePlacement(c, before) : fixed;
   const b = settings.adaptive ? choosePlacement(c, after) : fixed;
   const x = score(c, before, a, settings.individual), y = score(c, after, b, settings.individual);
@@ -99,6 +120,7 @@ export function acceptSum(c: SumContext, before: Gear, after: Gear, settings: Su
 }
 export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: number[]): SumAction | null {
   if (sumMet(c, g, settings)) return null;
+  g = policyGear(c, g, true);
   const a = settings.adaptive ? choosePlacement(c, g) : fixed, t = totals(g, a);
   // Water-fill remaining contributions, crediting real high rolls and paid
   // locks. This is a target SUM allocation, never an average-tier floor.
@@ -140,6 +162,7 @@ export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: 
     for (const j of [...js].reverse()) {
       const o = g.kind[j];
       if (o < 0 || !required.includes(o) || g.locked[j] || locks.length >= 2) continue;
+      if (c.critical && o === 6 && locks.some(k => g.kind[k] === 6)) continue;
       const sufficient = needsValue(j) === 0;
       if ((reset && sufficient) || (!reset && g.tier[j] >= settings.lockTier && sufficient)) locks.push(j);
     }

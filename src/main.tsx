@@ -251,7 +251,7 @@ function App() {
             >
               <X size={17} />
             </button>
-            <h3>STM v2.3.1</h3>
+            <h3>STM v2.3.2</h3>
             <p>
               4부위 입력 → 단계별 목표 → 사용 가능 모듈 → 최적화 계산. 게임
               결과는 왼쪽 장비에 반영하세요. 합산·달성 판정·빠른 행동 후보는
@@ -455,7 +455,7 @@ function App() {
           </span>
           <p>승리의 여신: 니케 · 비공식 팬 도구</p>
           <span>
-            v2.3.1 <span className="dot" />
+            v2.3.2 <span className="dot" />
           </span>
         </footer>
       </main>

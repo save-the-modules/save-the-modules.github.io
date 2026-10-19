@@ -1,12 +1,14 @@
 {
   "name": "save-the-modules",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "tsx --test src/model.test.ts src/planner.test.ts src/sumPolicy.test.ts",
+    "test": "tsx --test src/model.test.ts src/planner.test.ts src/sumPolicy.test.ts src/criticalPolicy.test.ts src/edgeCases.test.ts",
+    "validate:edges": "tsx scripts/validate-edges.ts",
+    "validate:critical": "tsx scripts/validate-critical.ts",
     "validate:sums": "tsx scripts/validate-sums.ts",
     "benchmark": "tsx scripts/benchmark.ts",
     "preview": "vite preview --host 127.0.0.1"

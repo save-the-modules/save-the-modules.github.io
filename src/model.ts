@@ -1,5 +1,5 @@
 import { DATA_REVISION, tierValue, TIER_COUNT } from "./data/tiers";
-export const MODEL_REVISION = "stm-v2.3.1-sum-reset-simulation-v1";
+export const MODEL_REVISION = "stm-v2.3.2-critical-union-simulation-v1";
 export const DEFAULT_EQUIPMENT_TIER = 11;
 export const DEFAULT_TARGET_TIER = 8;
 export const OPTIONS = [
