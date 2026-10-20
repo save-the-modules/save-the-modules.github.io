@@ -83,13 +83,19 @@ test("probabilities sum to one and use user-corrected critical weights", () => {
   assert.equal(OPTION_WEIGHTS.crit, 0.12);
   assert.equal(OPTION_WEIGHTS.critDamage, 0.1);
 });
-test("fresh default is only four code lines; other goals are independent", () => {
+test("fresh presets have 4/8/12 lines and independent requirements", () => {
   const s = initialState();
   assert.equal(s.targets.minimum.code.lines, 4);
   assert.equal(s.targets.minimum.code.averageTier, 8);
-  assert.equal(s.targets.balanced.code.lines, 0);
+  assert.equal(s.targets.balanced.code.lines, 4);
+  assert.equal(s.targets.balanced.attack.lines, 2);
+  assert.equal(s.targets.balanced.ammo.lines, 1);
+  assert.equal(s.targets.balanced.critical.lines, 1);
   s.targets.minimum.code.lines = 2;
-  assert.equal(s.targets.ultimate.code.lines, 0);
+  assert.equal(s.targets.ultimate.code.lines, 4);
+  assert.equal(s.targets.ultimate.attack.lines, 4);
+  assert.equal(s.targets.ultimate.ammo.lines, 2);
+  assert.equal(s.targets.ultimate.critical.lines, 2);
 });
 test("v3 round trip and schema validation", () => {
   const s = initialState();
@@ -547,6 +553,7 @@ test("v2.2: live guide evaluates selected goal and demo edits cannot change user
 test("v2.2: invalid data and empty goals cannot produce action candidates", () => {
   const s = initialState();
   s.ui.selectedGoal = "balanced";
+  s.targets.balanced = emptyTarget();
   assert.equal(getFastGuide(s).status, "empty");
   assert.deepEqual(getFastGuide(s).candidates, []);
   s.ui.selectedGoal = "minimum";
@@ -579,4 +586,16 @@ test("v2.2: critical allocation bottlenecks can suggest value resets without dup
   assert.ok(guide.candidates.some((c) => c.action === "수치 재설정"));
   assert.ok(!guide.candidates.some((c) => c.action === "효과 변경"));
   assert.ok(guide.candidates.every((c) => c.conditional));
+});
+
+test("demo is a sparse unlocked overload example with shared target presets", () => {
+  const demo = demoState();
+  assert.deepEqual(demo.targets, initialState().targets);
+  const slots = demo.equipment.flatMap(e => e.slots);
+  assert.ok(slots.every(s => !s.locked));
+  assert.ok(demo.equipment.every(e => e.slots[0].option !== "none"));
+  for (const [option, limit] of [["code", 30], ["attack", 20]] as const)
+    assert.ok(slots.filter(s => s.option === option).reduce((n,s) => n+s.value,0) < limit);
+  const saved = initialState(); saved.targets.balanced = emptyTarget();
+  assert.deepEqual(parseState(JSON.stringify(saved)).targets.balanced, emptyTarget());
 });

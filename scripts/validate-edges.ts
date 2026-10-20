@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { initialState, makeRequirement, type TargetOption } from '../src/model';
+import { emptyTarget, initialState, makeRequirement, type TargetOption } from '../src/model';
 import { calculateGoal } from '../src/engine';
 import { independentRun } from './validate-sums';
 const cases: [string, Partial<Record<TargetOption, number>>, boolean?][] = [
@@ -11,7 +11,7 @@ const cases: [string, Partial<Record<TargetOption, number>>, boolean?][] = [
   ['3번 명중15 잠금+4명중4차속', { hit: 4, chargeSpeed: 4 }, true],
 ];
 for (const [name, target, locked] of cases) {
-  const s = initialState(); s.targets.minimum = structuredClone(s.targets.balanced);
+  const s = initialState(); s.targets.minimum = emptyTarget();
   for (const [o, n] of Object.entries(target)) s.targets.minimum[o as TargetOption] = makeRequirement(o as TargetOption, n!, 8);
   if (locked) s.equipment.forEach(e => e.slots[2] = { option: 'hit', tier: 15, value: 14.63, locked: true });
   s.resources.modules.budget = 150;

@@ -41,7 +41,7 @@ export function TargetEditor({
       <div className="view-heading">
         <div>
           <h2>목표 설정</h2>
-          <p>4부위 전체의 줄 수와 합계로 판정합니다.</p>
+          <p>4부위 전체의 줄 수와 합계로 판정합니다. 기본 목표는 평균 8단계의 예시이며, 캐릭터에 맞게 수정하세요.</p>
         </div>
         <button
           className="text-button"

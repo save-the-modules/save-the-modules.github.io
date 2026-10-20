@@ -104,6 +104,7 @@ test('all-complete / empty targets return 100% / unavailable and no spurious wor
   const r = calculateGoal(s, 'minimum');
   assert.equal(r.expectedModules, 0); assert.equal(r.successProbability, 1);
   assert.equal(r.nextAction?.action, '사용 중단');
+  s.targets.balanced = emptyTarget();
   assert.equal(calculateGoal(s, 'balanced').expectedModules, null);
 });
 

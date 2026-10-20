@@ -124,6 +124,16 @@ export const emptyTarget = (): Target =>
     };
     return result;
   }, {} as Target);
+export function defaultTarget(stage: Stage): Target {
+  const target = emptyTarget();
+  const counts: Partial<Record<TargetOption, number>> = stage === "minimum"
+    ? { code: 4 }
+    : stage === "balanced" ? { code: 4, attack: 2, ammo: 1, critical: 1 }
+    : { code: 4, attack: 4, ammo: 2, critical: 2 };
+  for (const [option, lines] of Object.entries(counts))
+    target[option as TargetOption] = makeRequirement(option as TargetOption, lines!, DEFAULT_TARGET_TIER);
+  return target;
+}
 export function initialState(): State {
   return {
     schemaVersion: 3,
@@ -134,12 +144,9 @@ export function initialState(): State {
       slots: Array.from({ length: 3 }, emptySlot),
     })),
     targets: {
-      minimum: {
-        ...emptyTarget(),
-        code: makeRequirement("code", 4, DEFAULT_TARGET_TIER),
-      },
-      balanced: emptyTarget(),
-      ultimate: emptyTarget(),
+      minimum: defaultTarget("minimum"),
+      balanced: defaultTarget("balanced"),
+      ultimate: defaultTarget("ultimate"),
     },
     resources: { modules: { owned: 0, budget: 0 } },
     style: "safe",
@@ -377,34 +384,19 @@ export function recommend(
 }
 export function demoState(): State {
   const s = initialState();
-  s.resources.modules = { owned: 180, budget: 80 };
-  const opts: Option[][] = [
-    ["code", "attack", "ammo"],
-    ["code", "attack"],
-    ["ammo", "critDamage"],
-    ["code"],
+  s.resources.modules = { owned: 150, budget: 150 };
+  // Sparse, unlocked example after initial overload; not a random draw claim.
+  const options: [Option, number][][] = [
+    [["code", 3]],
+    [["attack", 4], ["defense", 2]],
+    [["hit", 2]],
+    [["chargeDamage", 3]],
   ];
-  s.equipment.forEach(
-    (e, i) =>
-      (e.slots = e.slots.map((_, j) =>
-        opts[i][j]
-          ? {
-              option: opts[i][j],
-              tier: 5 + j,
-              value: tierValue(opts[i][j], 5 + j)!,
-              locked: false,
-            }
-          : emptySlot(),
-      )),
-  );
-  STAGES.forEach((stage, i) => {
-    for (const [key, lines] of [
-      ["code", 4],
-      ["attack", 0],
-      ["ammo", 0],
-      ["critical", 0],
-    ] as [TargetOption, number][])
-      s.targets[stage][key] = makeRequirement(key, lines, [5, 7, 10][i]);
+  s.equipment.forEach((equipment, i) => {
+    equipment.slots = equipment.slots.map((_, j) => {
+      const entry = options[i][j];
+      return entry ? { option: entry[0], tier: entry[1], value: tierValue(entry[0], entry[1])!, locked: false } : emptySlot();
+    });
   });
   return s;
 }

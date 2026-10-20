@@ -3349,3 +3349,5 @@ main {
     font-size: 11px;
   }
 }
+
+.demo-banner > strong { flex-shrink: 0; white-space: nowrap; }

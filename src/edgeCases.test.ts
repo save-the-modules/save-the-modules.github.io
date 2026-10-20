@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { achievement, emptySlot, initialState, makeRequirement, OPTIONS, type Option, type TargetOption } from './model';
+import { emptyTarget, achievement, emptySlot, initialState, makeRequirement, OPTIONS, type Option, type TargetOption } from './model';
 import { tierValue } from './data/tiers';
 import { calculateGoal } from './engine';
 import { completionEventProbability } from './rules';
@@ -10,7 +10,7 @@ const slot = (option: Option, tier: number, locked = false) => ({ option, tier, 
 
 test('all nine single-option goals: true values, exact boundary, and one-cent shortfall', () => {
   for (const { id } of OPTIONS) for (const tier of [1, 8, 15]) {
-    const s = initialState(); s.targets.minimum = { ...s.targets.balanced };
+    const s = initialState(); s.targets.minimum = emptyTarget();
     s.targets.minimum[id] = makeRequirement(id, 4, tier);
     s.equipment.forEach(e => e.slots[0] = slot(id, tier));
     assert.equal(achievement(s, 'minimum').status, 'met');
@@ -35,7 +35,7 @@ test('hit and charge speed use their own value scales despite equal kind weights
 test('random valid gear and up to four target kinds agree with UI terminal decisions', () => {
   const random = randomGenerator(20102026);
   for (let i = 0; i < 1500; i++) {
-    const s = initialState(); s.targets.minimum = structuredClone(s.targets.balanced);
+    const s = initialState(); s.targets.minimum = emptyTarget();
     const critical = i % 3 === 0;
     const pool: TargetOption[] = critical ? ['code', 'hit', 'chargeSpeed', 'critical'] : ['hit', 'chargeSpeed', 'crit', 'critDamage'];
     for (const o of pool) s.targets.minimum[o] = makeRequirement(o, 1 + Math.floor(random() * 3), 1 + Math.floor(random() * 15));
@@ -66,7 +66,7 @@ test('random valid gear and up to four target kinds agree with UI terminal decis
   }
 });
 test('a locked low charge-speed line can be subsidized by high lines elsewhere', () => {
-  const s = initialState(); s.targets.minimum = structuredClone(s.targets.balanced);
+  const s = initialState(); s.targets.minimum = emptyTarget();
   s.targets.minimum.chargeSpeed = makeRequirement('chargeSpeed', 4, 8);
   [1, 15, 15, 15].forEach((tier, p) => s.equipment[p].slots[2] = slot('chargeSpeed', tier, true));
   assert.equal(calculateGoal(s, 'minimum').expectedModules, 0);
@@ -84,7 +84,7 @@ test('full irrelevant paid locks do not acquire impossible hit/charge-speed targ
   assert.equal(r.expectedModules, null); assert.equal(r.successProbability, null);
 });
 test('specific critical plus wildcard never counts one physical line twice', () => {
-  const s = initialState(); s.targets.minimum = structuredClone(s.targets.balanced);
+  const s = initialState(); s.targets.minimum = emptyTarget();
   s.targets.minimum.crit = makeRequirement('crit', 1, 8);
   s.targets.minimum.critical = makeRequirement('critical', 1, 8);
   s.equipment[0].slots[0] = slot('crit', 15);

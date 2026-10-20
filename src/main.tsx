@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import {
   demoState,
-  emptyTarget,
+  defaultTarget,
   equipmentIssues,
   initialState,
   parseState,
@@ -157,7 +157,7 @@ function App() {
       });
     } else if (confirm === "target")
       update((s) => {
-        s.targets[currentStage] = emptyTarget();
+        s.targets[currentStage] = defaultTarget(currentStage);
         delete s.baselines[currentStage];
       });
     setConfirm(null);
@@ -224,8 +224,7 @@ function App() {
           <FlaskConical size={15} />
           <strong>데모 모드</strong>
           <span>
-            예시 장비로 체험 중 · 사용자 데이터와 분리됩니다. 결과는 단순 근사
-            엔진으로 계산합니다.
+            예시 장비로 체험 중 · 내 데이터는 유지됩니다. 일반 모드와 같은 계산 엔진을 사용하며, 결과에는 가정과 추정 오차가 있습니다. 목표 확인 → 가이드에서 예상 소모·예산 내 확률 → 다음 행동 순서로 살펴보세요.
           </span>
           <button
             onClick={() => {
@@ -510,6 +509,7 @@ function App() {
                 ? "데모 데이터에만 적용됩니다."
                 : "초기화한 내용은 복구할 수 없습니다. 필요한 데이터는 먼저 JSON으로 내보내 주세요."}
             </p>
+            {confirm === "target" && <p>선택한 목표를 평균 8단계 기본 예시로 되돌립니다.</p>}
             <div>
               <button
                 className="button"
