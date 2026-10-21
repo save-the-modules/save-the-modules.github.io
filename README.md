@@ -1,5 +1,8 @@
 # Save the Modules (STM) v2.3.2
 
+- 공식 사이트: [Save the Modules](https://save-the-modules.github.io/)
+- 공식 저장소: [save-the-modules/save-the-modules.github.io](https://github.com/save-the-modules/save-the-modules.github.io)
+
 합계 목표에서 낮은 단계 채용 → 수치 재설정 경로를 추가했습니다. 목표 종류 4종 이하(크크 포함)에서 종류 고정/재배분 정책을 비교하고 별도 2,048회 표본으로 평균과 예산 확률을 추정합니다. 표본 오차와 계산 한도를 표시하며, 적용 범위 밖/꼬리 검증 실패 시 기존 해석적 정책을 유지합니다. 저장 스키마·배포 방식은 유지합니다.
 
 - [크리티컬 및 명중률·차속 검증](docs/CRITICAL-AUDIT.md)
@@ -54,7 +57,17 @@ npm run dev
 - 135개 수치와 사용자 교정 확률(크확 12%, 크뎀 10%)을 유지합니다. 크크는 크확/크뎀의 동일 단계를 동등하게 취급하고 줄 중복 배정을 금지합니다.
 - 모델 버전을 변경해 이전 비용·진행률 기준은 사용하지 않습니다. 제한된 탐색에서 비용 비율을 실제 진행률처럼 표시하지 않습니다.
 - Worker, 12개 입력 상태 캐시, 요청 취소와 오래된 응답 차단을 유지합니다. 예산 변경은 비용 정책을 재사용해 확률만 다시 계산합니다.
-- `.github/workflows/deploy.yml`을 유지합니다. main push 시 `npm ci`, 테스트, 빌드 후 GitHub Pages에 배포합니다. 상대 경로 설정과 Worker 청크를 보존합니다.
+- `.github/workflows/deploy.yml`을 유지합니다. main push 시 `npm ci`, 테스트, 빌드 후 `dist/`를 GitHub Pages에 배포합니다. 조직 사이트의 루트 주소에 맞춰 Vite `base: "/"`를 사용하며 Worker도 루트 자산 경로에서 로드합니다. 저장소 Settings → Pages의 Source는 **GitHub Actions**입니다.
+
+### 이전 주소의 저장 데이터 옮기기
+
+저장 키·스키마와 JSON 형식은 변경하지 않습니다. 단, localStorage는 출처(도메인)별로 분리되므로 이전 주소에서 **설정 저장**으로 JSON을 내보낸 후 새 공식 주소에서 **불러오기**를 사용하세요. 이전 주소의 데이터는 삭제하거나 덮어쓰지 않습니다. 같은 새 공식 주소에서 저장한 설정은 새로고침 후에도 유지됩니다.
+
+로컬 Git 원격은 다음 주소를 사용합니다.
+
+```sh
+git remote set-url origin https://github.com/save-the-modules/save-the-modules.github.io.git
+```
 
 ## 구성
 
