@@ -67,6 +67,19 @@ function App() {
   const [confirm, setConfirm] = useState<"equipment" | "target" | "all" | null>(
     null,
   );
+  const confirmTrigger = useRef<HTMLElement | null>(null);
+  const requestConfirm = (kind: "equipment" | "target" | "all") => {
+    // Capture before the dialog's autoFocus moves focus to its Cancel button.
+    confirmTrigger.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    setConfirm(kind);
+  };
+  useEffect(() => {
+    if (confirm !== null) return;
+    const trigger = confirmTrigger.current;
+    confirmTrigger.current = null;
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  }, [confirm]);
   const [help, setHelp] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const state = demo ?? user,
@@ -294,7 +307,7 @@ function App() {
               <button
                 className="icon-button"
                 aria-label="현재 장비 초기화"
-                onClick={() => setConfirm("equipment")}
+                onClick={() => requestConfirm("equipment")}
               >
                 <RotateCcw size={15} />
               </button>
@@ -412,7 +425,7 @@ function App() {
               <TargetEditor
                 state={state}
                 update={update}
-                onReset={() => setConfirm("target")}
+                onReset={() => requestConfirm("target")}
                 notify={notify}
               />
             ) : (
@@ -432,7 +445,7 @@ function App() {
               <div>
                 <button
                   className="text-button"
-                  onClick={() => setConfirm("all")}
+                  onClick={() => requestConfirm("all")}
                 >
                   전체 초기화
                 </button>
