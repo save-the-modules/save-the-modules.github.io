@@ -38,7 +38,7 @@ export function FastGuidePanel({
       <p role="status">{guide.reason}</p>
       {guide.candidates.length > 0 && (
         <ol className="fast-candidates">
-          {guide.candidates.slice(0, 3).map((c, i) => (
+          {guide.candidates.slice(0, 2).map((c, i) => (
             <li key={`${c.partIndex}:${c.action}:${c.target}:${c.slot}`}>
               <div>
                 <b>
@@ -49,7 +49,12 @@ export function FastGuidePanel({
                   {c.conditional ? "조건 확인 필요" : "작업 후보"}
                 </span>
               </div>
-              <p>{c.reason}</p>
+              {i === 0 && (
+                <details className="action-explanation">
+                  <summary>추천 기준</summary>
+                  <p>{c.reason}</p>
+                </details>
+              )}
               <div className="candidate-facts">
                 <span>
                   보존{" "}
@@ -67,11 +72,8 @@ export function FastGuidePanel({
               {state.resources.modules.budget < c.firstExecutionModules && (
                 <p className="warning-text">첫 실행 모듈이 부족합니다.</p>
               )}
-              {c.conditional && (
-                <small>
-                  잠금은 확정 추천이 아닙니다. 비용 비교가 가능한 경우 아래 계산
-                  경로도 확인하세요.
-                </small>
+              {c.conditional && i === 0 && (
+                <small>잠금 전 게임 화면에서 옵션 보존 여부를 확인하세요.</small>
               )}
             </li>
           ))}

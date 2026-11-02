@@ -118,8 +118,8 @@ export function acceptSum(c: SumContext, before: Gear, after: Gear, settings: Su
     (!settings.individual && Math.min(next.sum[o], c.totals[o]) < Math.min(old.sum[o], c.totals[o])))) return false;
   return y[0] > x[0] || (y[0] === x[0] && y[1] > x[1] + 1e-10);
 }
-export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: number[]): SumAction | null {
-  if (sumMet(c, g, settings)) return null;
+export function rankSumActions(c: SumContext, g: Gear, settings: SumSettings, fixed: number[]): SumAction[] {
+  if (sumMet(c, g, settings)) return [];
   g = policyGear(c, g, true);
   const a = settings.adaptive ? choosePlacement(c, g) : fixed, t = totals(g, a);
   // Water-fill remaining contributions, crediting real high rolls and paid
@@ -142,7 +142,7 @@ export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: 
     }
     return 0;
   });
-  let best: SumAction | null = null, bestPriority = -Infinity;
+  const ranked: { action: SumAction; priority: number }[] = [];
   for (let p = 0; p < 4; p++) {
     const js = [p * 3, p * 3 + 1, p * 3 + 2];
     const required = c.active.filter(o => a[p] & (1 << o));
@@ -180,9 +180,12 @@ export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: 
     const modules = RULES.rerollModules[locks.length];
     // Finish kinds first; reset the piece with the most recoverable sum deficit.
     const priority = missing ? 100 + missing / modules : potential / modules;
-    if (priority > bestPriority) { bestPriority = priority; best = { part: p, reset, locks, setup, modules, allocation: a }; }
+    ranked.push({ priority, action: { part: p, reset, locks, setup, modules, allocation: a } });
   }
-  return best;
+  return ranked.sort((a, b) => b.priority - a.priority).map(({ action }) => action);
+}
+export function decideSum(c: SumContext, g: Gear, settings: SumSettings, fixed: number[]): SumAction | null {
+  return rankSumActions(c, g, settings, fixed)[0] ?? null;
 }
 export function randomGenerator(seed: number): () => number {
   return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t ^= t + Math.imul(t ^ t >>> 7, 61 | t); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -213,13 +216,15 @@ export function drawSum(g: Gear, action: SumAction, random: () => number): Gear 
   return next;
 }
 export function simulateSum(c: SumContext, initial: Gear, settings: SumSettings, n: number, seed: number,
-  draw = drawSum, maxRolls = 2_000_000): Samples {
+  draw = drawSum, maxRolls = 2_000_000, forcedFirstAction?: SumAction): Samples {
   const random = randomGenerator(seed), fixed = choosePlacement(c, initial), costs: number[] = [];
   let censored = 0, rolls = 0;
   for (let i = 0; i < n; i++) {
     let g = copyGear(initial), cost = 0;
+    let firstAction = true;
     while (!sumMet(c, g, settings) && cost < 20000 && rolls < maxRolls) {
-      const action = decideSum(c, g, settings, fixed);
+      const action = firstAction && forcedFirstAction ? forcedFirstAction : decideSum(c, g, settings, fixed);
+      firstAction = false;
       if (!action) break;
       cost += action.setup + action.modules; rolls++;
       for (const j of action.locks) g.locked[j] = true;

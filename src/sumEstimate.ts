@@ -1,5 +1,5 @@
 import { type GoalResult, type State, type Stage, OPTIONS, PARTS } from './model';
-import { choosePlacement, decideSum, gearFromState, sampleProbability, simulateSum, sumContext, sumNextAction, type SumSettings } from './sumPolicy';
+import { choosePlacement, rankSumActions, gearFromState, sampleProbability, simulateSum, sumContext, sumNextAction, type SumSettings } from './sumPolicy';
 
 /** Pilot selection is separate from the displayed holdout. A censored run is
  * NEVER used as a finite expectation or normalized success distribution. */
@@ -16,17 +16,29 @@ export function estimateSum(s: State, stage: Stage, analyticCost: number): GoalR
   if (!best) return null;
   const seed = 981723, samples = simulateSum(c, initial, best, 2048, seed, undefined, 800000);
   if (samples.censored || samples.mean + 3 * samples.standardError >= analyticCost) return null;
-  const action = decideSum(c, initial, best, choosePlacement(c, initial));
+  const alternatives = rankSumActions(c, initial, best, choosePlacement(c, initial));
+  const action = alternatives[0];
   if (!action) return null;
   const nextAction = sumNextAction(action);
   nextAction.newLockSlots = action.locks.filter(j => !initial.locked[j]).map(j => j % 3);
+  const nextActions = [{ action: nextAction, expectedModules: samples.mean,
+    standardError: samples.standardError, samples: samples.costs.length, scope: 'goal' as const }];
+  if (alternatives[1]) {
+    const alternativeSamples = simulateSum(c, initial, best, 1024, seed + 1, undefined, 800000, alternatives[1]);
+    if (!alternativeSamples.censored) {
+      const alternativeAction = sumNextAction(alternatives[1]);
+      alternativeAction.newLockSlots = alternatives[1].locks.filter(j => !initial.locked[j]).map(j => j % 3);
+      nextActions.push({ action: alternativeAction, expectedModules: alternativeSamples.mean,
+        standardError: alternativeSamples.standardError, samples: alternativeSamples.costs.length, scope: 'goal' as const });
+    }
+  }
   const mode = best.adaptive ? '결과마다 종류 배분도 재선택' : '종류 배분 유지';
   const names = (mask: number) => OPTIONS.flatMap((o, i) => mask & (1 << i) ? [c.critical && i === 6 ? '크크 (크확 또는 크뎀)' : o.short] : []);
   nextAction.reason += ` ${mode}, 합계 배분은 매번 갱신합니다. 현재 부위의 배정 종류: ${names(action.allocation[action.part]).join(' · ')}. 배정된 종류별 줄 수와 목표까지의 합계가 줄지 않으면서 하나라도 늘어난 결과를 채용하는 정책입니다.`;
   return {
     expectedModules: samples.mean, successProbability: sampleProbability(samples.costs, s.resources.modules.budget),
     simulation: { costs: samples.costs, standardError: samples.standardError, samples: samples.costs.length, adaptive: best.adaptive, seed },
-    nextAction, stable: false,
+    nextAction, nextActions, stable: false,
     allocation: action.allocation.map((mask, p) => ({ part: PARTS[p], expectedModules: null,
       targets: names(mask).map(name => `${name} · 전체 합계로 보완`) })),
     diagnostics: { allocations: c.allocations.length, localEvaluations: samples.rolls, milliseconds: performance.now() - start, limited: false },

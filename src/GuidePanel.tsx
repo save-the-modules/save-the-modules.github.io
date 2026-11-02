@@ -109,10 +109,10 @@ export function GuidePanel({
           </p>
         </details>
       </div>
-      <p className="notice" role="note">
-        가정 기반 보수적 계산 · 추첨 순서·독립성·중복 제외 후 확률은 공식 확인 전입니다.
-        낮은 단계 채용 후 수치 재설정·합계 보완 경로도 비교하며, 모든 전략의 최소 비용은 아닙니다.
-      </p>
+      <details className="action-explanation calculation-assumptions">
+        <summary>계산 가정과 범위</summary>
+        <p>추첨 순서·독립성·중복 제외 후 확률은 공식 확인 전입니다. 낮은 단계 채용과 실제 합계 보완 경로를 비교하지만, 모든 전략의 최소 비용은 아닙니다.</p>
+      </details>
       <div className="goal-comparison">
         {STAGES.map((stage) => {
           const r = result?.goals[stage],
@@ -255,7 +255,28 @@ export function GuidePanel({
                     : `${a.part} · ${a.action}`}
                 </h2>
               </div>
-              <p>{a.reason}</p>
+              <details className="action-explanation">
+                <summary>행동 기준과 잠금 안내</summary>
+                <p>{a.reason}</p>
+              </details>
+              {g?.nextActions && g.nextActions.length > 1 && (
+                <ol className="action-alternatives" aria-label="다음 행동 후보">
+                  {g.nextActions.slice(0, 2).map((candidate, index) => (
+                    <li key={`${candidate.action.part}:${candidate.action.action}`}>
+                      <b>{index + 1}순위 · {candidate.action.part} · {candidate.action.action}</b>
+                      <span>{candidate.scope === "goal" ? "전체 목표" : "해당 부위 완료"} 예상 {candidate.expectedModules.toFixed(1)}개</span>
+                      {candidate.scope === "goal" && candidate.standardError !== undefined && (
+                        <small>{candidate.samples?.toLocaleString()}회 · 근사 95% 오차 ±{(1.96 * candidate.standardError).toFixed(1)}개</small>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {g?.nextActions && g.nextActions.length > 1 && (
+                <p className="compact-note">
+                  현재 순위는 제한된 정책 비교입니다. 결과를 입력하면 다음 행동과 예상 비용을 다시 계산합니다.
+                </p>
+              )}
               {a.action !== "사용 중단" && (
                 <>
                   <div className="action-details">
@@ -304,10 +325,10 @@ export function GuidePanel({
                       사용 가능 모듈이 부족합니다.
                     </p>
                   )}
-                  <p className="compact-note">
-                    잠금 선택만으로 모듈을 차감하지 않습니다. 새 잠금 비용은
-                    게임에서 첫 리롤 실행 시 한 번만 반영합니다.
-                  </p>
+                  <details className="action-explanation">
+                    <summary>잠금 비용 안내</summary>
+                    <p>잠금 선택만으로 모듈을 차감하지 않습니다. 새 잠금 비용은 첫 리롤 실행 시 한 번만 반영합니다.</p>
+                  </details>
                 </>
               )}
             </>
@@ -317,11 +338,12 @@ export function GuidePanel({
             </div>
           )}
           {g && (
-            <p
-              className={`result-reason ${g.expectedModules === null ? "warning-text" : ""}`}
-            >
-              {g.reason}
-            </p>
+            <details className="action-explanation">
+              <summary>예상 비용과 계산 방식</summary>
+              <p className={`result-reason ${g.expectedModules === null ? "warning-text" : ""}`}>
+                {g.reason}
+              </p>
+            </details>
           )}
           {g?.allocation && (
             <div className="piece-priorities">
@@ -329,13 +351,16 @@ export function GuidePanel({
               <ul>{g.allocation.map(p => <li key={p.part}>
                 <b>{p.part}</b> · {p.targets.join(' + ') || '추가 목표 없음'}{p.expectedModules === null ? '' : ` · 약 ${p.expectedModules.toFixed(1)}개`}
               </li>)}</ul>
-              <p>{g.simulation ? '부위별 최소 단계는 고정하지 않습니다. 종류를 확보한 뒤 실제 높은 수치를 나머지 합계 부족분에 반영합니다.' : '현재 유효 옵션은 추가로 보존합니다. 높은 현재 수치를 다른 부위의 목표 합계에 반영합니다.'}</p>
+              <details className="action-explanation">
+                <summary>부위별 배분 기준</summary>
+                <p>{g.simulation ? '낮은 단계도 채용한 뒤 실제 합산 수치로 부족분을 보완합니다.' : '기존 유효 옵션을 보존하고 다른 부위의 실제 합산 수치를 반영합니다.'}</p>
+              </details>
             </div>
           )}
-          <p className="approx-label">
-            {isDemo ? "데모 결과 · " : ""}표시된 배분과 정책의 비교 결과입니다. 목표 배분 변경이나
-            더 폭넓은 적응형 전략은 더 저렴할 수 있습니다. 변경 결과를 입력하고 다시 확인하세요.
-          </p>
+          <details className="action-explanation">
+            <summary>{isDemo ? "데모 결과의 한계" : "추천 결과의 한계"}</summary>
+            <p className="approx-label">현재 배분과 정책의 비교 결과입니다. 다른 전략이 더 저렴할 수 있으니, 실제 결과를 입력하면 다시 계산합니다.</p>
+          </details>
         </details>
       )}
       {result && (

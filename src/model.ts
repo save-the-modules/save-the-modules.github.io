@@ -82,6 +82,7 @@ export interface GoalResult {
   successProbability: number | null;
   reason: string;
   nextAction: NextAction | null;
+  nextActions?: { action: NextAction; expectedModules: number; standardError?: number; samples?: number; scope: 'piece' | 'goal' }[];
   stable: boolean;
   completionPolicy?: import('./probability').CompletionPolicy;
   simulation?: { costs: number[]; standardError: number; samples: number; adaptive: boolean; seed: number };

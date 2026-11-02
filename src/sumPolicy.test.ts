@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OPTIONS, achievement, initialState, makeRequirement } from './model';
 import { tierValue } from './data/tiers';
-import { acceptSum, choosePlacement, copyGear, decideSum, drawSum, gearFromState, randomGenerator, sampleInterval, sampleProbability, simulateSum, sumContext, sumMet } from './sumPolicy';
+import { acceptSum, choosePlacement, copyGear, decideSum, drawSum, gearFromState, randomGenerator, rankSumActions, sampleInterval, sampleProbability, simulateSum, sumContext, sumMet } from './sumPolicy';
 import { fixture, independentDraw, independentRun } from '../scripts/validate-sums';
 import { calculate, calculateGoal } from './engine';
 import { CostCache } from './resultCache';
@@ -82,7 +82,20 @@ test('reference fixture improves analytic policy with holdout samples, not a tar
   const s = fixture(), r = calculateGoal(s, 'minimum');
   assert.ok(r.simulation && r.expectedModules! < 180 && r.expectedModules! > 60);
   assert.equal(r.simulation.samples, 2048);
+  assert.equal(r.nextActions?.length, 2);
+  assert.ok(r.nextActions!.every(a => a.scope === 'goal' && Number.isFinite(a.expectedModules)));
+  assert.deepEqual(r.nextActions!.map(a => a.samples), [2048, 1024]);
   assert.ok(r.reason.includes('최적해가 아닙니다'));
+});
+test('second-ranked first action receives its own same-policy expected-cost simulation', () => {
+  const s = fixture(), c = sumContext(s, 'minimum')!, g = gearFromState(s);
+  const ranked = rankSumActions(c, g, settings, choosePlacement(c, g));
+  assert.ok(ranked.length >= 2);
+  const first = simulateSum(c, g, settings, 128, 541, undefined, 800000, ranked[1]);
+  const repeat = simulateSum(c, g, settings, 128, 541, undefined, 800000, ranked[1]);
+  assert.equal(first.censored, 0);
+  assert.deepEqual(first.costs, repeat.costs);
+  assert.ok(first.mean >= ranked[1].setup + ranked[1].modules);
 });
 test('blank versus irrelevant hit tier1 has identical completion costs under the same draws', () => {
   const a = fixture(3, 1, false), b = fixture(3, 1, true);

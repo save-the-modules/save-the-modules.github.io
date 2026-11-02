@@ -42,10 +42,16 @@ export function calculateGoal(input: State, stage: Stage): GoalResult {
   if (sum) return sum;
   if (!plan) return unavailable('보존 정책에서 가능한 배분을 찾지 못했습니다. 기존 잠금·목표의 최대 수치·중복 종류 제한을 확인하세요. 불가능한 게임 목표라는 판정은 아닙니다.');
   const policy = combinePolicies(plan.pieces.flatMap(p => p.policy ? [p.policy] : []));
-  const first = plan.pieces.filter(p => p.action).sort((a, b) => a.cost - b.cost)[0];
+  const nextActions = plan.pieces
+    .flatMap((piece) => piece.action && Number.isFinite(piece.cost)
+      ? [{ action: piece.action, expectedModules: piece.cost, scope: 'piece' as const }]
+      : [])
+    .sort((a, b) => a.expectedModules - b.expectedModules)
+    .slice(0, 2);
+  const first = nextActions[0]?.action;
   return {
     expectedModules: plan.cost, successProbability: policyProbability(policy, input.resources.modules.budget),
-    completionPolicy: policy, nextAction: first?.action ?? null, stable: false,
+    completionPolicy: policy, nextAction: first ?? null, nextActions, stable: false,
     allocation: plan.pieces.map((p, i) => ({ part: PARTS[i], expectedModules: p.cost,
       targets: plan.assignments.filter(a => a.part === i).map(a => `${OPTIONS.find(o => o.id === a.option)!.short} ${a.tier}단계 이상`) })),
     diagnostics: plan.diagnostics,

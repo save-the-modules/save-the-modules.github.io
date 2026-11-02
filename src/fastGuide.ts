@@ -280,7 +280,7 @@ export function getFastGuide(s: State): FastGuide {
       a.partIndex - b.partIndex,
   );
   result.reason = result.candidates.length
-    ? "4부위 합산 부족량과 기여 옵션 보존에 따른 작업 후보입니다. 최적 행동을 보장하지 않습니다."
+    ? "장비와 목표를 반영한 다음 행동 후보입니다."
     : "모든 기여 옵션을 보존할 작업 후보가 없습니다. 잠금 상태와 목표를 검토하세요. 무리한 효과 변경은 권하지 않습니다.";
   return result;
 }
